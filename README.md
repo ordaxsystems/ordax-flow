@@ -1,4 +1,4 @@
-# OrdaX Gratis 0.4.6
+# OrdaX Gratis 0.4.7
 
 Aplicativo desktop Windows independente que usa a sessão normal do ChatGPT Web dentro do próprio processo Electron, com Tasks locais duráveis e uma interface OrdaX própria.
 
@@ -50,7 +50,7 @@ Runs deixados como `running` após encerramento inesperado são reconciliados no
 
 ## Continuidade e memória
 
-A versão 0.4.5 mantém a separação explícita entre **tarefa/projeto** e **conversa do provider** e adiciona memória estruturada canônica sobre essa base. Isso permite trabalhos longos, como um livro, continuarem mesmo quando uma conversa do ChatGPT é encerrada ou precisa ser renovada.
+O OrdaX separa **projeto persistente (Task)** de **conversa descartável do provider**. Um projeto pode ser software, pesquisa, planejamento, criação de conteúdo ou qualquer trabalho de longa duração. Quando a conversa interna acaba, sua memória, checkpoints, decisões e artefatos continuam pertencendo à mesma Task local.
 
 - a coluna esquerda representa Tasks/conversas persistentes do OrdaX;
 - o chat central mostra o histórico canônico da Task;
@@ -63,17 +63,25 @@ A versão 0.4.5 mantém a separação explícita entre **tarefa/projeto** e **co
 
 A camada seguinte preserva conhecimento canônico da Task sem depender de inferência implícita do provider. Cada item tem categoria, chave, conteúdo, status e proveniência, e pode ser revisado manualmente no painel Contexto.
 
-Categorias canônicas atuais: `entity`, `structure`, `fact`, `decision`, `constraint`, `goal`, `open_loop` e `reference`. Elas são deliberadamente genéricas: em um livro, `entity` pode representar personagem e `structure` um capítulo; em software, podem representar componente e módulo.
+Categorias canônicas atuais: `entity`, `structure`, `fact`, `decision`, `constraint`, `goal`, `open_loop` e `reference`. Elas descrevem, respectivamente, entidades/componentes, estrutura, fatos, decisões, restrições, objetivos, pendências e referências. Nenhuma categoria depende do domínio do projeto.
 
 Itens ativos são incluídos no pacote de continuidade antes do histórico recente. Um item com a mesma categoria+chave é atualizado em vez de duplicado; arquivar remove o item do contexto ativo sem apagar o registro. Extração semântica automática fica para uma camada posterior e deverá reutilizar o mesmo SSOT, sempre com proveniência explícita.
 
 ### Sugestões de memória (0.4.6)
 
-A conversa pode gerar **candidatos**, nunca fatos canônicos automaticamente. O detector local v1 reconhece apenas declarações explícitas do usuário, como `Personagem Caio: ...`, `Capítulo 2: ...`, `Regra: ...` e `Decidimos que ...`. Ele não faz chamadas adicionais ao ChatGPT nem interpreta livremente o diálogo. Ações no painel Contexto: **Aprovar**, **Editar** antes de aprovar, **Descartar** e **Analisar** mensagens anteriores.
+A conversa pode gerar **candidatos**, nunca fatos canônicos automaticamente. O detector local reconhece declarações explícitas e identificadas, como `Objetivo MVP: ...`, `Decisão Persistência: ...`, `Restrição Privacidade: ...`, `Pendência Autenticação: ...` e `Estrutura Serviços: ...`. Sinônimos antigos continuam aceitos por compatibilidade, mas não definem o produto. O detector não faz chamadas adicionais ao ChatGPT nem interpreta livremente o diálogo. Ações no painel Contexto: **Aprovar**, **Editar** antes de aprovar, **Descartar** e **Analisar** mensagens anteriores.
 
 Os candidatos ficam em `project_memory_candidates`, com mensagem de origem, versão do detector, evidência, decisão e horário de revisão. Uma rejeição não reaparece ao reanalisar a mesma mensagem; aprovações atualizam `project_memory_items` com proveniência da mensagem e transação SQLite. O pacote de continuidade inclui **somente memórias aprovadas**, jamais sugestões pendentes ou recusadas. Nesta fase não há extração semântica livre nem aprovação silenciosa.
 
 **Proteção de conflitos:** quando uma sugestão aponta para a mesma categoria+chave de uma memória já aprovada, a UI mostra os valores **atual** e **proposto**. Substituir exige abrir a revisão e marcar confirmação explícita. O backend confere dentro da transação o ID e conteúdo canônico esperado; se alguém atualizou o item enquanto ele estava aberto, a aprovação falha sem sobrescrever o valor novo.
+
+### Montagem do contexto de continuidade (0.4.7)
+
+O provedor recebe um **pacote limitado e determinístico**, construído pela Task local. A seleção prioriza objetivos, restrições, decisões, pendências, estrutura, entidades, fatos e referências; mensagens recentes entram como histórico, não como cânone. Nenhum item pendente ou arquivado é promovido automaticamente.
+
+O OrdaX **não corta mais o pacote no meio de um registro** e sinaliza quantitativamente memórias e mensagens que não couberam. A íntegra continua no SQLite e no painel de Contexto. O pedido atual do usuário é preservado sem truncamento, mesmo quando a mensagem é maior que o orçamento disponível para continuidade. O ChatGPT não deve supor o conteúdo dos itens omitidos; em projetos extensos, o usuário pode revisar e atualizar o checkpoint e os itens prioritários.
+
+Esta base independe do tipo de projeto e não tenta simular memória infinita do ChatGPT: memória persistente, versões e decisões pertencem ao OrdaX.
 
 ## Login e segurança
 

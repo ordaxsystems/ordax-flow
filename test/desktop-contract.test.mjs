@@ -143,7 +143,7 @@ test('project memory suggestions are review-only and isolated from canon', () =>
   assert.match(schema, /source_message_id/);
   assert.match(schema, /BEGIN IMMEDIATE/);
   assert.match(schema, /candidate_reviewed/);
-  assert.match(detector, /explicit-pt-v1/);
+  assert.match(detector, /explicit-project-v2/);
   assert.match(main, /memory:candidates:review/);
   assert.match(preload, /reviewMemoryCandidate/);
   assert.match(ui, /renderMemoryCandidates/);
@@ -151,12 +151,22 @@ test('project memory suggestions are review-only and isolated from canon', () =>
   assert.match(html, /scanMemoryCandidates/);
 });
 
+test('generic project context is assembled from approved memory without truncating requests', () => {
+  const store = fs.readFileSync(path.join(root,'src','store.mjs'),'utf8');
+  const context = fs.readFileSync(path.join(root,'src','continuation-context.mjs'),'utf8');
+  assert.match(store, /buildProjectContinuation/);
+  assert.match(context, /MEMORIA PARCIAL/);
+  assert.match(context, /HISTORICO PARCIAL/);
+  assert.match(context, /continuation_budget_invariant_failed/);
+  assert.ok(!store.includes('slice(0, 12)'));
+});
+
 test('structured project memory is editable, durable and part of continuation', () => {
   const store = fs.readFileSync(path.join(root,'src','store.mjs'),'utf8');
   assert.match(store, /project_memory_items/);
   assert.match(store, /upsertProjectMemory/);
   assert.match(store, /archiveProjectMemory/);
-  assert.match(store, /Memória estruturada canônica/);
+  assert.match(fs.readFileSync(path.join(root,'src','continuation-context.mjs'),'utf8'), /Memória estruturada canônica/);
   assert.match(main, /ordax:tasks:memory:upsert/);
   assert.match(main, /ordax:tasks:memory:archive/);
   assert.match(preload, /upsertProjectMemory/);

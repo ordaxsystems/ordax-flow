@@ -1,13 +1,17 @@
-// Deterministic, local, deliberately conservative v1 detector.
-// Suggestions are untrusted until a user reviews and explicitly accepts them.
-export const SUGGESTION_EXTRACTOR_VERSION = 'explicit-pt-v1';
+// Deterministic, domain-neutral detector of explicitly labeled project statements.
+// Legacy genre aliases remain accepted for backward compatibility, not privileged.
+// A suggestion is untrusted until the user explicitly approves it.
+export const SUGGESTION_EXTRACTOR_VERSION = 'explicit-project-v2';
 
 const PREFIXES = [
   ['personagem','entity'], ['entidade','entity'], ['estrutura','structure'],
   ['decisão','decision'], ['decisao','decision'], ['regra','constraint'],
   ['restrição','constraint'], ['restricao','constraint'], ['objetivo','goal'],
   ['fato','fact'], ['pendência','open_loop'], ['pendencia','open_loop'],
-  ['referência','reference'], ['referencia','reference']
+  ['referência','reference'], ['referencia','reference'],
+  ['meta','goal'], ['tarefa','open_loop'], ['componente','entity'],
+  ['modulo','entity'], ['módulo','entity'], ['etapa','structure'],
+  ['fase','structure'], ['marco','structure']
 ];
 
 function normalize(value) {
@@ -31,6 +35,16 @@ export function suggestFromExplicitText(text) {
   for (const original of lines) {
     const line = original.trim();
     if (!line || line.length > 600 || /^[>\`]|^\s*[-*]\s/.test(line)) continue;
+    // Explicit, named records work equally for software, research, planning or writing:
+    // "Decisão Persistência: usar SQLite" / "Pendência Login: validar SSO".
+    const typed = line.match(/^([\p{L}\p{M}]+)\s+([^:]{2,90}):\s*(.{5,})$/u);
+    if (typed) {
+      const category = PREFIXES.find(([name]) => name === typed[1].toLocaleLowerCase('pt-BR'))?.[1];
+      if (category) {
+        add(category, typed[2], typed[3], line);
+        continue;
+      }
+    }
     const chapter = line.match(/^cap[ií]tulo\s+(\d+(?:\s*[-–]\s*[\p{L}\d ]{1,45})?)\s*:\s*(.{5,})$/iu);
     if (chapter) {
       add('structure', 'Capítulo ' + normalize(chapter[1]), chapter[2], line);

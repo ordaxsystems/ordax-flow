@@ -1,6 +1,6 @@
 {
   "name": "ordax-gratis",
-  "version": "0.4.6",
+  "version": "0.4.7",
   "private": true,
   "type": "module",
   "main": "desktop/main.mjs",
@@ -8,7 +8,7 @@
   "author": "OrdaX Systems",
   "scripts": {
     "start": "electron .",
-    "check": "node --check desktop/main.mjs && node --check desktop/embedded-worker.mjs && node --check desktop/ui.js && node --check src/store.mjs && node --check src/memory-suggestions.mjs && node --check src/memory-candidates.mjs && node --check scripts/e2e-lock.cjs && node --check scripts/live-ui-text-smoke.cjs && node --check scripts/live-ui-stream-smoke.cjs && node --check scripts/live-ui-image-smoke.cjs && node --check scripts/live-ui-continuity-smoke.cjs && node --check scripts/live-ui-restart-smoke.cjs && node --check scripts/set-observer-mode.cjs && node --check scripts/benchmark-suite.cjs",
+    "check": "node --check desktop/main.mjs && node --check desktop/embedded-worker.mjs && node --check desktop/ui.js && node --check src/store.mjs && node --check src/continuation-context.mjs && node --check src/memory-suggestions.mjs && node --check src/memory-candidates.mjs && node --check scripts/e2e-lock.cjs && node --check scripts/live-ui-text-smoke.cjs && node --check scripts/live-ui-stream-smoke.cjs && node --check scripts/live-ui-image-smoke.cjs && node --check scripts/live-ui-continuity-smoke.cjs && node --check scripts/live-ui-restart-smoke.cjs && node --check scripts/set-observer-mode.cjs && node --check scripts/benchmark-suite.cjs",
     "test": "node --test test/*.test.mjs",
     "validate": "npm run check && npm test",
     "test:live:text": "node scripts/live-ui-text-smoke.cjs",

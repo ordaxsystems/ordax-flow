@@ -307,3 +307,36 @@ test('concurrent canon revision makes an earlier conflict confirmation stale', t
   }),/project_memory_conflict_requires_review/);
   assert.equal(store.listProjectMemory(task.id).find(x=>x.key==='Caio').content,'Caio tem 36 anos.');
 });
+
+test('a generic long-running project preserves full canonical memory across provider rotations', t => {
+  const { dir, dbPath } = tempStore();
+  let store = new Store(dbPath);
+  cleanup(t, dir, () => store);
+  const project = store.createTask('Plataforma de atendimento');
+  store.setChatUrl(project.id, 'https://chatgpt.com/c/segment-one');
+  store.checkpoint(project.id, 'Base local pronta; próximas etapas: SSO e sincronização.');
+  for (let i = 0; i < 60; i++) {
+    store.upsertProjectMemory(project.id, {
+      category: i % 2 === 0 ? 'decision' : 'open_loop',
+      key: 'Workstream ' + i,
+      content: 'Contrato canônico do workstream ' + i + ': ' + 'documentado '.repeat(30)
+    });
+  }
+  store.rotateConversation(project.id);
+  let task = store.getTask(project.id);
+  assert.equal(task.project_memory.summary.total, 60);
+  assert.equal(task.chat_url, null);
+  const request = 'Continuar a integração SSO sem perder decisões anteriores.';
+  const injected = store.buildContinuationPrompt(project.id, request);
+  assert.ok(injected.length <= 16000);
+  assert.ok(injected.endsWith('Pedido atual:\n' + request));
+  assert.match(injected, /\[MEMORIA PARCIAL\]/);
+  assert.match(injected, /\[DECISAO\]/);
+  assert.match(injected, /\[PENDENCIA\]/);
+  store.close();
+  store = new Store(dbPath);
+  task = store.getTask(project.id);
+  assert.equal(task.project_memory.items.length, 60);
+  assert.equal(store.buildResumeCapsule(project.id).project_memory.items.length, 60);
+  assert.ok(store.buildContinuationPrompt(project.id, request).endsWith('Pedido atual:\n' + request));
+});

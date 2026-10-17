@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import fs from 'node:fs';
 import { MemoryCandidateLedger } from './memory-candidates.mjs';
+import { buildProjectContinuation } from './continuation-context.mjs';
 
 const SQLITE_OPEN_RETRY_DELAYS_MS = [0, 40, 80, 160, 320, 640, 1280];
 const sqliteOpenWait = new Int32Array(new SharedArrayBuffer(4));
@@ -435,38 +436,13 @@ export class Store {
   buildContinuationPrompt(taskId, prompt) {
     const task = this.getTask(taskId);
     if (!task) return String(prompt || '');
-    const recent = task.messages.slice(-6);
-    const checkpoint = task.checkpoint_record;
-    const memoryItems = (task.project_memory?.items || []).slice(0, 12);
-    const categoryLabels = {
-      entity:'ENTIDADE', structure:'ESTRUTURA', fact:'FATO', decision:'DECISAO',
-      constraint:'RESTRICAO', goal:'OBJETIVO', open_loop:'PENDENCIA', reference:'REFERENCIA'
-    };
-    const lines = [
-      '[CONTEXTO ORDAX - CONTINUIDADE DE UMA TAREFA PERSISTENTE]',
-      `Tarefa/projeto: ${task.title}`,
-      `Checkpoint: ${String(checkpoint?.summary || task.checkpoint || 'Sem checkpoint ainda.').slice(0,1200)}`
-    ];
-    if (memoryItems.length) {
-      lines.push('Memória estruturada canônica da tarefa:');
-      for (const item of memoryItems) {
-        const label = categoryLabels[item.category] || item.category.toUpperCase();
-        lines.push(`[${label}] ${item.key}: ${String(item.content || '').replace(/\s+/g,' ').trim().slice(0,380)}`);
-      }
-    }
-    lines.push('Histórico recente preservado localmente:');
-    for (const message of recent) {
-      const role = message.role === 'assistant' ? 'ASSISTENTE' : 'USUARIO';
-      const text = String(message.content || '').replace(/\s+/g,' ').trim();
-      if (text) lines.push(`${role}: ${text.slice(0,650)}`);
-      for (const asset of (message.assets || []).slice(0,4)) lines.push(`ARTEFATO: ${asset.kind} - ${asset.alt || asset.id}`);
-    }
-    lines.push('Instrução de continuidade: a memória estruturada acima é canônica para esta tarefa. Preserve decisões, nomes, fatos, restrições, estrutura e trabalho já concluído. Não reinicie o projeto do zero nem contradiga itens canônicos sem sinalizar o conflito.');
-    lines.push('[FIM DO CONTEXTO ORDAX]');
-    const request = String(prompt || '').trim().slice(0,15000);
-    const context = lines.join('\n');
-    const budget = Math.max(0, 16000 - request.length - 20);
-    return `${context.slice(0,budget)}\nPedido atual:\n${request}`;
+    return buildProjectContinuation({
+      title: task.title,
+      checkpoint: task.checkpoint_record?.summary || task.checkpoint,
+      memoryItems: task.project_memory?.items || [],
+      recentMessages: task.messages,
+      request: prompt
+    });
   }
 
   checkpoint(id, summary, payload = {}) {
