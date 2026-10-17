@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { planProviderConversation, SUCCESSFUL_TURNS_PER_SEGMENT } from '../src/conversation-policy.mjs';
+import { planProviderConversation, SUCCESSFUL_TURNS_PER_SEGMENT, assessProviderRotation } from '../src/conversation-policy.mjs';
 
 const makeTask = (turns, options = {}) => ({
   chat_url: options.url === undefined ? 'https://chatgpt.com/c/old' : options.url,
@@ -28,4 +28,12 @@ test('the policy does not rotate on unavailable or inconsistent segment counts',
   const task={chat_url:'https://chatgpt.com/c/old',conversations:[]};
   assert.equal(planProviderConversation(task).automaticRotation,false);
   assert.equal(planProviderConversation({chat_url:task.chat_url,conversations:[{id:'other',chat_url:'https://chatgpt.com/c/different',status:'active',completed_turns:300}]}).newSession,false);
+});
+
+test('rotation never claims success when the provider stayed on the same URL', () => {
+  const plan=planProviderConversation(makeTask(24));
+  assert.equal(assessProviderRotation(plan,'https://chatgpt.com/c/old','https://chatgpt.com/c/old'),'same_url');
+  assert.equal(assessProviderRotation(plan,'https://chatgpt.com/c/old','https://chatgpt.com/c/new'),'rotated');
+  assert.equal(assessProviderRotation(plan,'https://chatgpt.com/c/old',null),'missing_url');
+  assert.equal(assessProviderRotation(planProviderConversation(makeTask(0)),'https://chatgpt.com/c/old','https://chatgpt.com/c/new'),'not_requested');
 });

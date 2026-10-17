@@ -21,3 +21,11 @@ export function planProviderConversation(task, { forceNew = false } = {}) {
     previousConversationId: active?.id || null
   };
 }
+
+export function assessProviderRotation(plan, previousUrl, returnedUrl) {
+  if (!plan?.automaticRotation) return 'not_requested';
+  const previous=String(previousUrl || '').trim();
+  const returned=String(returnedUrl || '').trim();
+  if (!returned) return 'missing_url';
+  return previous && previous === returned ? 'same_url' : 'rotated';
+}

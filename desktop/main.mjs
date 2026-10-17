@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { randomUUID, createHash } from 'node:crypto';
 import { Store } from '../src/store.mjs';
-import { planProviderConversation } from '../src/conversation-policy.mjs';
+import { planProviderConversation, assessProviderRotation } from '../src/conversation-policy.mjs';
 import { EmbeddedChatWorker } from './embedded-worker.mjs';
 
 if (process.env.ORDAX_DESKTOP_DEBUG === '1') {
@@ -156,12 +156,21 @@ async function runTask(taskId, prompt, { newSession = false } = {}) {
 
   try {
     const result = await worker.sendPrompt({ prompt: providerPrompt, chatUrl: task.chat_url, newSession: conversationPlan.newSession });
+    const rotationOutcome = assessProviderRotation(conversationPlan, task.chat_url, result.chatUrl);
     const bound = store.setChatUrl(taskId, result.chatUrl, needsContinuation ? checkpointVersion : null);
-    if (conversationPlan.automaticRotation && bound?.id !== conversationPlan.previousConversationId) {
+    if (conversationPlan.automaticRotation && rotationOutcome === 'rotated' && bound?.id !== conversationPlan.previousConversationId) {
       store.event(taskId, 'provider.conversation.auto_rotated', {
         reason:conversationPlan.reason,
         previous_conversation_id:conversationPlan.previousConversationId,
         new_conversation_id:bound?.id || null,
+        previous_completed_turns:conversationPlan.completedTurns
+      });
+    } else if (conversationPlan.automaticRotation) {
+      // Preserve the successful response; never resend a prompt merely because
+      // the provider returned the same conversation URL.
+      store.event(taskId, 'provider.conversation.rotation_unconfirmed', {
+        reason:rotationOutcome,
+        previous_conversation_id:conversationPlan.previousConversationId,
         previous_completed_turns:conversationPlan.completedTurns
       });
     }
