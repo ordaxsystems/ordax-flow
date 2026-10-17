@@ -81,7 +81,10 @@ function friendlyError(error) {
     project_memory_key_required: 'Dê um nome ou chave para este item de memória.',
     project_memory_content_required: 'Descreva o conteúdo que deve permanecer canônico.',
     project_memory_key_conflict: 'Já existe outro item com essa categoria e chave.',
-    project_memory_too_large: 'Este item de memória excede o limite permitido.'
+    project_memory_too_large: 'Este item de memória excede o limite permitido.',
+    project_memory_candidate_not_found: 'Esta sugestão não foi encontrada.',
+    project_memory_candidate_reviewed: 'Esta sugestão já foi revisada.',
+    invalid_project_memory_review: 'Ação de revisão inválida.'
   };
   return messages[code] || raw.replace(/^Error invoking remote method '[^']+': Error: /, '');
 }
@@ -103,10 +106,12 @@ function setMemoryEditor(open, item = null) {
   if (!open) {
     editor.reset();
     delete editor.dataset.memoryId;
+    delete editor.dataset.candidateId;
     return;
   }
   if (item) {
-    editor.dataset.memoryId = item.id;
+    if (item.id) editor.dataset.memoryId = item.id;
+    else delete editor.dataset.memoryId;
     $('#memoryCategory').value = item.category;
     $('#memoryKey').value = item.key;
     $('#memoryContent').value = item.content;
@@ -114,7 +119,50 @@ function setMemoryEditor(open, item = null) {
     editor.reset();
     delete editor.dataset.memoryId;
   }
+  delete editor.dataset.candidateId;
   $('#memoryKey').focus();
+}
+
+function renderMemoryCandidates(task) {
+  const candidates = task.project_memory?.candidates || [];
+  $('#memoryCandidateCount').textContent = String(task.project_memory?.pending_count || candidates.length);
+  $('#memoryCandidates').innerHTML = candidates.length ? candidates.map(item =>
+    '<article class="memory-candidate" data-candidate-id="' + esc(item.id) + '">' +
+      '<div class="memory-item-top"><span class="memory-kind">' + esc(memoryCategoryLabels[item.category] || item.category) + '</span>' +
+      '<strong>' + esc(item.key) + '</strong></div>' +
+      '<p>' + esc(item.content) + '</p>' +
+      '<small>Origem: mensagem da conversa · ' + esc(item.evidence) + '</small>' +
+      '<div class="memory-review-actions">' +
+        '<button class="mini-primary" type="button" data-review="accept">Aprovar</button>' +
+        '<button class="mini-secondary" type="button" data-review="edit">Editar</button>' +
+        '<button class="mini-secondary" type="button" data-review="reject">Descartar</button>' +
+      '</div></article>'
+  ).join('') : '<div class="context-empty">Nenhuma sugestão pendente. Só itens aprovados entram no cânone.</div>';
+
+  document.querySelectorAll('.memory-candidate [data-review]').forEach(button => button.addEventListener('click', async () => {
+    const card = button.closest('[data-candidate-id]');
+    const item = candidates.find(row => row.id === card?.dataset.candidateId);
+    if (!item) return;
+    if (button.dataset.review === 'edit') {
+      setMemoryEditor(true, { category:item.category, key:item.key, content:item.content });
+      $('#memoryEditor').dataset.candidateId = item.id;
+      $('#memoryContent').focus();
+      return;
+    }
+    const taskId = currentTaskId;
+    card.querySelectorAll('button').forEach(b => { b.disabled = true; });
+    try {
+      const updated = await window.ordax.reviewMemoryCandidate(taskId, item.id, button.dataset.review);
+      if (currentTaskId === taskId) {
+        currentTask = updated;
+        renderContext(updated);
+        await loadTasks();
+      }
+    } catch (error) {
+      $('#providerDetail').textContent = friendlyError(error);
+      card.querySelectorAll('button').forEach(b => { b.disabled = false; });
+    }
+  }));
 }
 
 function renderTaskList() {
@@ -153,6 +201,7 @@ function renderContext(task) {
     <div class="stat"><strong>v${checkpointVersion}</strong><span>checkpoint</span></div>
     <div class="stat"><strong>${conversations.length}</strong><span>conversas</span></div>`;
 
+  renderMemoryCandidates(task);
   const memoryItems = task.project_memory?.items || [];
   $('#structuredMemoryCount').textContent = String(memoryItems.length);
   $('#structuredMemory').innerHTML = memoryItems.length ? memoryItems.map(item => `
@@ -278,10 +327,16 @@ async function saveMemoryItem(event) {
   const submit = editor.querySelector('[type="submit"]');
   submit.disabled = true;
   try {
-    currentTask = await window.ordax.upsertProjectMemory(currentTaskId, { id:editor.dataset.memoryId || undefined, category, key, content });
-    setMemoryEditor(false);
-    renderContext(currentTask);
-    await loadTasks();
+    const taskId = currentTaskId;
+    const updated = editor.dataset.candidateId
+      ? await window.ordax.reviewMemoryCandidate(taskId, editor.dataset.candidateId, 'accept', { category, key, content })
+      : await window.ordax.upsertProjectMemory(taskId, { id:editor.dataset.memoryId || undefined, category, key, content });
+    if (currentTaskId === taskId) {
+      currentTask = updated;
+      setMemoryEditor(false);
+      renderContext(updated);
+      await loadTasks();
+    }
   } catch (error) {
     $('#providerDetail').textContent = friendlyError(error);
   } finally {
@@ -331,6 +386,20 @@ $('#rotateConversation').addEventListener('click', rotateConversation);
 $('#addMemoryItem').addEventListener('click', () => setMemoryEditor($('#memoryEditor').classList.contains('hidden')));
 $('#cancelMemoryItem').addEventListener('click', () => setMemoryEditor(false));
 $('#memoryEditor').addEventListener('submit', saveMemoryItem);
+$('#scanMemoryCandidates').addEventListener('click', async () => {
+  if (!currentTaskId) return;
+  const taskId = currentTaskId;
+  const button = $('#scanMemoryCandidates');
+  button.disabled = true;
+  try {
+    const task = await window.ordax.scanMemoryCandidates(taskId);
+    if (currentTaskId === taskId) { currentTask = task; renderContext(task); await loadTasks(); }
+  } catch (error) {
+    $('#providerDetail').textContent = friendlyError(error);
+  } finally {
+    button.disabled = false;
+  }
+});
 $('#toggleContext').addEventListener('click', () => setContextOpen(!$('#contextRail').classList.contains('open')));
 $('#closeContext').addEventListener('click', () => setContextOpen(false));
 window.addEventListener('keydown', event => {

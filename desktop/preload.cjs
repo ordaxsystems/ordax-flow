@@ -10,6 +10,8 @@ contextBridge.exposeInMainWorld('ordax', {
   rotateConversation: id => ipcRenderer.invoke('ordax:tasks:rotate-conversation', id),
   upsertProjectMemory: (taskId, item) => ipcRenderer.invoke('ordax:tasks:memory:upsert', { taskId, item }),
   archiveProjectMemory: (taskId, memoryId) => ipcRenderer.invoke('ordax:tasks:memory:archive', { taskId, memoryId }),
+  scanMemoryCandidates: taskId => ipcRenderer.invoke('ordax:tasks:memory:candidates:scan', taskId),
+  reviewMemoryCandidate: (taskId, candidateId, action, changes) => ipcRenderer.invoke('ordax:tasks:memory:candidates:review', { taskId, candidateId, action, changes }),
   send: payload => ipcRenderer.invoke('ordax:tasks:send', payload),
   providerStatus: () => ipcRenderer.invoke('ordax:provider:status'),
   getObserverMode: () => ipcRenderer.invoke('ordax:provider:observer-mode:get'),

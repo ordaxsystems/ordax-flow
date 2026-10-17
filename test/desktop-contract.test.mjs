@@ -14,7 +14,7 @@ const liveText = fs.readFileSync(path.join(root,'scripts','live-ui-text-smoke.cj
 
 test('desktop package ships only canonical desktop runtime', () => {
   assert.equal(pkg.main, 'desktop/main.mjs');
-  assert.deepEqual(pkg.build.files, ['desktop/**/*','src/store.mjs','package.json']);
+  assert.deepEqual(pkg.build.files, ['desktop/**/*','src/*.mjs','package.json']);
   assert.equal(pkg.dependencies, undefined);
   assert.ok(!JSON.stringify(pkg).includes('playwright-core'));
   assert.ok(!JSON.stringify(pkg.build.files).includes('chrome-extension'));
@@ -133,6 +133,22 @@ test('persistent Task memory can rotate provider conversations without losing th
   assert.match(main, /providerPrompt/);
   assert.match(preload, /rotateConversation/);
   assert.match(ui, /Nova conversa interna/);
+});
+
+test('project memory suggestions are review-only and isolated from canon', () => {
+  const schema = fs.readFileSync(path.join(root,'src','memory-candidates.mjs'),'utf8');
+  const detector = fs.readFileSync(path.join(root,'src','memory-suggestions.mjs'),'utf8');
+  const html = fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
+  assert.match(schema, /project_memory_candidates/);
+  assert.match(schema, /source_message_id/);
+  assert.match(schema, /BEGIN IMMEDIATE/);
+  assert.match(schema, /candidate_reviewed/);
+  assert.match(detector, /explicit-pt-v1/);
+  assert.match(main, /memory:candidates:review/);
+  assert.match(preload, /reviewMemoryCandidate/);
+  assert.match(ui, /renderMemoryCandidates/);
+  assert.match(html, /memoryCandidates/);
+  assert.match(html, /scanMemoryCandidates/);
 });
 
 test('structured project memory is editable, durable and part of continuation', () => {

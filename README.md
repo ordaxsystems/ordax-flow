@@ -1,4 +1,4 @@
-# OrdaX Gratis 0.4.5
+# OrdaX Gratis 0.4.6
 
 Aplicativo desktop Windows independente que usa a sessão normal do ChatGPT Web dentro do próprio processo Electron, com Tasks locais duráveis e uma interface OrdaX própria.
 
@@ -66,6 +66,12 @@ A camada seguinte preserva conhecimento canônico da Task sem depender de infer�
 Categorias canônicas atuais: `entity`, `structure`, `fact`, `decision`, `constraint`, `goal`, `open_loop` e `reference`. Elas são deliberadamente genéricas: em um livro, `entity` pode representar personagem e `structure` um capítulo; em software, podem representar componente e módulo.
 
 Itens ativos são incluídos no pacote de continuidade antes do histórico recente. Um item com a mesma categoria+chave é atualizado em vez de duplicado; arquivar remove o item do contexto ativo sem apagar o registro. Extração semântica automática fica para uma camada posterior e deverá reutilizar o mesmo SSOT, sempre com proveniência explícita.
+
+### Sugestões de memória (0.4.6)
+
+A conversa pode gerar **candidatos**, nunca fatos canônicos automaticamente. O detector local v1 reconhece apenas declarações explícitas do usuário, como `Personagem Caio: ...`, `Capítulo 2: ...`, `Regra: ...` e `Decidimos que ...`. Ele não faz chamadas adicionais ao ChatGPT nem interpreta livremente o diálogo. Ações no painel Contexto: **Aprovar**, **Editar** antes de aprovar, **Descartar** e **Analisar** mensagens anteriores.
+
+Os candidatos ficam em `project_memory_candidates`, com mensagem de origem, versão do detector, evidência, decisão e horário de revisão. Uma rejeição não reaparece ao reanalisar a mesma mensagem; aprovações atualizam `project_memory_items` com proveniência da mensagem e transação SQLite. O pacote de continuidade inclui **somente memórias aprovadas**, jamais sugestões pendentes ou recusadas. Nesta fase não há extração semântica livre nem aprovação silenciosa.
 
 ## Login e segurança
 

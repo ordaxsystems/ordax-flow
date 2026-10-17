@@ -2,6 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import fs from 'node:fs';
+import { MemoryCandidateLedger } from './memory-candidates.mjs';
 
 const SQLITE_OPEN_RETRY_DELAYS_MS = [0, 40, 80, 160, 320, 640, 1280];
 const sqliteOpenWait = new Int32Array(new SharedArrayBuffer(4));
@@ -161,6 +162,7 @@ export class Store {
     this.ensureColumn('runs', 'heartbeat_at', 'TEXT');
     this.ensureColumn('runs', 'observer_mode', 'TEXT');
     this.ensureColumn('runs', 'metrics', 'TEXT');
+    this.memoryCandidates = new MemoryCandidateLedger(this);
     this.workspaceSession = this.ensureWorkspaceSession();
     this.db.prepare("UPDATE tasks SET workspace_session_id=? WHERE workspace_session_id IS NULL OR workspace_session_id=''")
       .run(this.workspaceSession.id);
@@ -242,7 +244,7 @@ export class Store {
   }
 
   listTasks() {
-    return this.db.prepare(`SELECT t.*, (SELECT COUNT(*) FROM task_conversations c WHERE c.task_id=t.id) AS conversation_count FROM tasks t ORDER BY updated_at DESC`).all();
+    return this.db.prepare(`SELECT t.*, (SELECT COUNT(*) FROM task_conversations c WHERE c.task_id=t.id) AS conversation_count, (SELECT COUNT(*) FROM project_memory_candidates c WHERE c.task_id=t.id AND c.status='pending') AS pending_memory_count FROM tasks t ORDER BY updated_at DESC`).all();
   }
 
   getTask(id) {
@@ -257,7 +259,9 @@ export class Store {
       conversations: this.listConversations(id),
       project_memory: {
         items: this.listProjectMemory(id),
-        summary: this.projectMemorySummary(id)
+        summary: this.projectMemorySummary(id),
+        candidates: this.memoryCandidates.list(id),
+        pending_count: this.memoryCandidates.pendingCount(id)
       },
       continuation: this.continuationSummary(id)
     };
@@ -303,6 +307,7 @@ export class Store {
       .run(id, taskId, role, content, now);
     this.touch(taskId);
     this.event(taskId, 'message.appended', { id, role });
+    if (role === 'user') this.memoryCandidates.suggestFromMessage(taskId, { id, role, content });
     return { id, role, content, created_at: now, assets: [] };
   }
 
@@ -421,6 +426,7 @@ export class Store {
       total_messages: Number(this.db.prepare('SELECT COUNT(*) AS n FROM messages WHERE task_id=?').get(taskId)?.n || 0),
       conversation_count: conversations.length,
       structured_memory_count: projectMemory.total,
+      pending_memory_candidates: this.memoryCandidates.pendingCount(taskId),
       structured_memory_by_category: projectMemory.by_category,
       active_conversation: conversations.find(row => row.status === 'active') || null
     };

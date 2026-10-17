@@ -189,3 +189,65 @@ test('Structured project memory is canonical, durable and injected into continua
   assert.equal(current.project_memory.summary.total, 2);
   assert.equal(store.listProjectMemory(task.id, { includeArchived: true }).find(item => item.id === structure.id).status, 'archived');
 });
+
+test('memory proposals remain pending through restart and require explicit review', t => {
+  const { dir, dbPath } = tempStore();
+  let store = new Store(dbPath);
+  cleanup(t, dir, () => store);
+  const task = store.createTask('Livro - Caminhos');
+  const user = store.appendMessage(task.id, 'user', [
+    'Personagem Caio: Protagonista de 35 anos, nascido em Salvador.',
+    'Regra: a narrativa deve permanecer em terceira pessoa limitada.'
+  ].join('\n'));
+  store.appendMessage(task.id, 'assistant', 'Entendido: personagem Caio e ponto de vista limitado.');
+  store.appendMessage(task.id, 'user', 'Personagem Caio: Protagonista de 35 anos, nascido em Salvador.'); // repeated evidence stays one pending suggestion
+
+  let current = store.getTask(task.id);
+  assert.equal(current.project_memory.summary.total, 0);
+  assert.equal(current.project_memory.pending_count, 2);
+  assert.equal(store.memoryCandidates.list(task.id).length, 2);
+  const before = store.buildContinuationPrompt(task.id, 'Continue.');
+  assert.doesNotMatch(before, /Memória estruturada canônica/);
+
+  store.close();
+  store = new Store(dbPath);
+  current = store.getTask(task.id);
+  assert.equal(current.project_memory.pending_count, 2);
+  assert.equal(store.memoryCandidates.scan(task.id).added, 0);
+  const rejected = current.project_memory.candidates.find(item => item.category === 'constraint');
+  store.memoryCandidates.review(task.id, rejected.id, 'reject');
+  assert.equal(store.memoryCandidates.scan(task.id).added, 0);
+  assert.equal(store.getTask(task.id).project_memory.pending_count, 1);
+  assert.throws(() => store.memoryCandidates.review(task.id, rejected.id, 'accept'), /project_memory_candidate_reviewed/);
+
+  const accepted = store.memoryCandidates.list(task.id)[0];
+  const sourceRef = accepted.source_message_id;
+  assert.equal(sourceRef, user.id);
+  store.memoryCandidates.review(task.id, accepted.id, 'accept', {
+    key:'Caio Mendes',
+    content:'Protagonista de 35 anos, nascido em Salvador; usa o nome Caio Mendes.'
+  });
+  current = store.getTask(task.id);
+  assert.equal(current.project_memory.pending_count, 0);
+  assert.equal(current.project_memory.summary.total, 1);
+  assert.equal(current.project_memory.items[0].source_type, 'message');
+  assert.equal(current.project_memory.items[0].source_ref, sourceRef);
+  assert.equal(current.project_memory.items[0].key, 'Caio Mendes');
+  assert.match(store.buildContinuationPrompt(task.id, 'Avance.'), /\[ENTIDADE\] Caio Mendes/);
+  assert.doesNotMatch(store.buildContinuationPrompt(task.id, 'Avance.'), /\[RESTRICAO\]/);
+  assert.ok(store.getTask(task.id).events.some(event => event.kind === 'project_memory.candidate_reviewed'));
+});
+
+test('candidate review rollback preserves pending proposal when canon validation fails', t => {
+  const { dir, dbPath } = tempStore();
+  const store = new Store(dbPath);
+  cleanup(t, dir, () => store);
+  const task = store.createTask('Pesquisa');
+  store.appendMessage(task.id, 'user', 'Fato: o estudo utiliza dados de 2026.');
+  const candidate = store.memoryCandidates.list(task.id)[0];
+  assert.ok(candidate);
+  assert.throws(() => store.memoryCandidates.review(task.id,candidate.id,'accept',{category:'invalid'}), /invalid_project_memory_category/);
+  assert.equal(store.memoryCandidates.list(task.id).length,1);
+  assert.equal(store.getTask(task.id).project_memory.summary.total,0);
+  assert.throws(() => store.memoryCandidates.review('task_unknown',candidate.id,'reject'), /project_memory_candidate_not_found/);
+});

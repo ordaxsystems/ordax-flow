@@ -260,6 +260,14 @@ ipcMain.handle('ordax:tasks:memory:archive', (_event, { taskId, memoryId }) => {
   store.archiveProjectMemory(String(taskId), String(memoryId));
   return decorateTask(store.getTask(String(taskId)));
 });
+ipcMain.handle('ordax:tasks:memory:candidates:scan', (_event, taskId) => {
+  store.memoryCandidates.scan(String(taskId));
+  return decorateTask(store.getTask(String(taskId)));
+});
+ipcMain.handle('ordax:tasks:memory:candidates:review', (_event, { taskId, candidateId, action, changes }) => {
+  store.memoryCandidates.review(String(taskId), String(candidateId), String(action), changes || {});
+  return decorateTask(store.getTask(String(taskId)));
+});
 ipcMain.handle('ordax:provider:status', async () => {
   const base = worker.status();
   if (base.active) {

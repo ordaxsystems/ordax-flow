@@ -166,6 +166,14 @@ button{color:inherit}
 .memory-editor-actions{display:flex;justify-content:flex-end;gap:6px;margin-top:7px}
 .mini-secondary,.mini-primary{border:1px solid var(--border);border-radius:8px;padding:6px 8px;font-size:9px;cursor:pointer}
 .mini-secondary{background:#111821;color:#7f8b9b}.mini-primary{background:#e8edf3;color:#0a0e13;border-color:#e8edf3;font-weight:800}
+.memory-candidates{display:flex;flex-direction:column;gap:8px}
+.memory-candidate{border:1px solid #33404d;background:#141c25;border-radius:11px;padding:10px}
+.memory-candidate .memory-item-top{margin-bottom:6px}
+.memory-candidate p{color:#c3ceda;font-size:10px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere;margin:0}
+.memory-candidate small{display:block;margin-top:7px;font-size:8px;line-height:1.4;color:#7a8a9d;overflow-wrap:anywhere}
+.memory-review-actions{display:flex;gap:5px;flex-wrap:wrap;margin-top:9px}
+.memory-review-actions button{flex:1;min-width:60px}
+.memory-review-actions button:disabled{opacity:.45;cursor:wait}
 .structured-memory-list{display:flex;flex-direction:column;gap:7px}
 .memory-item{position:relative;border:1px solid #202b38;border-radius:10px;background:#101720;padding:9px 28px 9px 9px}
 .memory-item-top{display:flex;align-items:center;gap:6px;margin-bottom:5px;min-width:0}
