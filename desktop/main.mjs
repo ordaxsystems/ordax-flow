@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { randomUUID, createHash } from 'node:crypto';
 import { Store } from '../src/store.mjs';
+import { planProviderConversation } from '../src/conversation-policy.mjs';
 import { EmbeddedChatWorker } from './embedded-worker.mjs';
 
 if (process.env.ORDAX_DESKTOP_DEBUG === '1') {
@@ -143,7 +144,8 @@ async function runTask(taskId, prompt, { newSession = false } = {}) {
   const task = store.getTask(taskId);
   if (!task) throw new Error('task_not_found');
 
-  const needsContinuation = Boolean((newSession || !task.chat_url) && task.messages.length > 0);
+  const conversationPlan = planProviderConversation(task, { forceNew:newSession });
+  const needsContinuation = Boolean(conversationPlan.newSession && task.messages.length > 0);
   const checkpointVersion = task.checkpoint_record?.version || 0;
   const providerPrompt = needsContinuation ? store.buildContinuationPrompt(taskId, prompt) : prompt;
   const userMessage = store.appendMessage(taskId, 'user', prompt);
@@ -153,8 +155,16 @@ async function runTask(taskId, prompt, { newSession = false } = {}) {
   const heartbeat = setInterval(() => store.heartbeatRun(taskId, runId), 5000);
 
   try {
-    const result = await worker.sendPrompt({ prompt: providerPrompt, chatUrl: task.chat_url, newSession: newSession || !task.chat_url });
-    store.setChatUrl(taskId, result.chatUrl, needsContinuation ? checkpointVersion : null);
+    const result = await worker.sendPrompt({ prompt: providerPrompt, chatUrl: task.chat_url, newSession: conversationPlan.newSession });
+    const bound = store.setChatUrl(taskId, result.chatUrl, needsContinuation ? checkpointVersion : null);
+    if (conversationPlan.automaticRotation && bound?.id !== conversationPlan.previousConversationId) {
+      store.event(taskId, 'provider.conversation.auto_rotated', {
+        reason:conversationPlan.reason,
+        previous_conversation_id:conversationPlan.previousConversationId,
+        new_conversation_id:bound?.id || null,
+        previous_completed_turns:conversationPlan.completedTurns
+      });
+    }
     const runMetrics = store.recordRunMetrics(taskId, runId, observerMode, { ...(result.metrics || {}), runStartedAt: liveRun?.startedAt || null });
     const assistant = store.appendMessage(taskId, 'assistant', result.text || '');
     const assets = persistImages(taskId, assistant.id, result.images || []);
@@ -251,7 +261,10 @@ ipcMain.handle('ordax:tasks:open', async (_event, id) => {
   return decorateTask(task);
 });
 ipcMain.handle('ordax:tasks:resume-capsule', (_event, id) => store.buildResumeCapsule(String(id)));
-ipcMain.handle('ordax:tasks:rotate-conversation', (_event, id) => decorateTask(store.rotateConversation(String(id), 'manual_ui')));
+ipcMain.handle('ordax:tasks:rotate-conversation', (_event, id) => {
+  if (liveRun) throw new Error('conversation_rotation_during_run');
+  return decorateTask(store.rotateConversation(String(id), 'manual_ui'));
+});
 ipcMain.handle('ordax:tasks:memory:upsert', (_event, { taskId, item }) => {
   store.upsertProjectMemory(String(taskId), { ...(item || {}), source_type:'manual' });
   return decorateTask(store.getTask(String(taskId)));

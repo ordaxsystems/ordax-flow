@@ -70,8 +70,7 @@
           </div>
           <div class="task-head-actions">
             <button id="toggleContext" class="ghost-button context-toggle" type="button" aria-controls="contextRail" aria-expanded="false">Contexto</button>
-            <span id="conversationBadge" class="badge">1 conversa</span>
-            <button id="rotateConversation" class="ghost-button" type="button" title="Abre uma nova conversa interna mantendo a memória da tarefa">Nova conversa interna</button>
+            <span id="conversationBadge" class="badge">Projeto contínuo</span>
           </div>
         </header>
         <div id="recoveryBanner" class="recovery hidden"></div>
@@ -93,7 +92,7 @@
       <section id="empty" class="empty">
         <div class="empty-mark">O</div>
         <h2>Comece uma conversa que pode continuar amanhã.</h2>
-        <p>O OrdaX mantém mensagens, checkpoints, imagens e contexto da tarefa localmente. Uma nova conversa interna pode continuar o mesmo livro, pesquisa ou projeto sem começar do zero.</p>
+        <p>Um único histórico para seu projeto, com decisões, checkpoints, arquivos e memória local. O OrdaX gerencia automaticamente as conversas internas quando necessário.</p>
         <button class="primary empty-create" type="button" data-create-task>Nova conversa</button>
       </section>
     </section>
@@ -180,15 +179,17 @@
         </div>
       </section>
 
-      <section class="context-section conversations-section">
-        <div class="section-title-row">
-          <span>Conversas internas</span>
+      <details class="context-section conversations-section internal-diagnostics">
+        <summary class="section-title-row">
+          <span>Detalhes das sessões internas</span>
           <small id="internalConversationCount">0</small>
-        </div>
+        </summary>
+        <p class="diagnostics-hint">As sessões são técnicas; seu histórico contínuo pertence ao OrdaX.</p>
         <div id="conversationTimeline" class="conversation-timeline">
           <div class="context-empty">A primeira conversa será registrada ao enviar uma mensagem.</div>
         </div>
-      </section>
+        <button id="rotateConversation" class="mini-secondary" type="button">Preparar outra sessão interna</button>
+      </details>
     </aside>
   </main>
   <script type="module" src="./ui.js"></script>

@@ -196,7 +196,7 @@ function renderTaskList() {
   $('#tasks').innerHTML = tasks.map(task => `
     <button class="task ${task.id === currentTaskId ? 'active' : ''}" data-id="${esc(task.id)}">
       <strong>${esc(task.title)}</strong>
-      <span class="task-sub"><span>${esc(statusLabel(task.status))}</span><span>${plural(Number(task.conversation_count || 0), 'chat', 'chats')}</span></span>
+      <span class="task-sub"><span>${esc(statusLabel(task.status))}</span><span>Projeto persistente</span></span>
     </button>`).join('');
   document.querySelectorAll('.task').forEach(button => button.addEventListener('click', () => openTask(button.dataset.id)));
 }
@@ -212,18 +212,14 @@ function renderContext(task) {
   const assets = task.messages.flatMap(message => (message.assets || []).map(asset => ({ ...asset, message })));
   const checkpointVersion = task.checkpoint_record?.version || continuation.checkpoint_version || 0;
 
-  $('#conversationBadge').textContent = task.chat_url
-    ? plural(Math.max(1, conversations.length), 'conversa', 'conversas')
-    : conversations.length
-      ? 'continuidade pronta'
-      : 'primeira conversa';
+  $('#conversationBadge').textContent = 'Projeto contínuo';
 
   $('#memorySummary').textContent = task.checkpoint_record?.summary || task.checkpoint ||
     'A memória desta tarefa será formada por checkpoints, mensagens, decisões e artefatos locais conforme o trabalho evoluir.';
   $('#memoryStats').innerHTML = `
     <div class="stat"><strong>${Number(continuation.total_messages || task.messages.length)}</strong><span>mensagens</span></div>
     <div class="stat"><strong>v${checkpointVersion}</strong><span>checkpoint</span></div>
-    <div class="stat"><strong>${conversations.length}</strong><span>conversas</span></div>`;
+    <div class="stat"><strong>${Number(continuation.structured_memory_count || 0)}</strong><span>memórias</span></div>`;
 
   renderMemoryCandidates(task);
   const memoryItems = task.project_memory?.items || [];
@@ -336,7 +332,7 @@ async function rotateConversation() {
     $('#providerDetail').textContent = friendlyError(error);
   } finally {
     button.disabled = false;
-    button.textContent = 'Nova conversa interna';
+    button.textContent = 'Preparar outra sessão interna';
   }
 }
 

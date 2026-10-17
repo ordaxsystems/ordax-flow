@@ -135,6 +135,21 @@ test('persistent Task memory can rotate provider conversations without losing th
   assert.match(ui, /Nova conversa interna/);
 });
 
+test('a persistent project hides internal provider sessions and rotates only after completed turns', () => {
+  const policy = fs.readFileSync(path.join(root,'src','conversation-policy.mjs'),'utf8');
+  const html = fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
+  assert.match(policy, /SUCCESSFUL_TURNS_PER_SEGMENT = 24/);
+  assert.match(main, /planProviderConversation/);
+  assert.match(main, /conversationPlan\.newSession/);
+  assert.match(main, /provider\.conversation\.auto_rotated/);
+  assert.match(main, /conversation_rotation_during_run/);
+  assert.match(html, /internal-diagnostics/);
+  assert.match(html, /<details/);
+  assert.match(ui, /Projeto contínuo/);
+  assert.doesNotMatch(html, /id="rotateConversation"[^>]*Nova conversa interna/);
+  assert.match(fs.readFileSync(path.join(root,'src','store.mjs'),'utf8'), /conversation_completed_runs/);
+});
+
 test('project memory suggestions are review-only and isolated from canon', () => {
   const schema = fs.readFileSync(path.join(root,'src','memory-candidates.mjs'),'utf8');
   const detector = fs.readFileSync(path.join(root,'src','memory-suggestions.mjs'),'utf8');

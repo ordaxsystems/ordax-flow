@@ -118,6 +118,14 @@ export class Store {
         UNIQUE(task_id, sequence)
       );
       CREATE INDEX IF NOT EXISTS idx_task_conversations_task ON task_conversations(task_id, sequence);
+      CREATE TABLE IF NOT EXISTS conversation_completed_runs (
+        run_id TEXT PRIMARY KEY REFERENCES runs(id) ON DELETE CASCADE,
+        task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+        conversation_id TEXT NOT NULL REFERENCES task_conversations(id) ON DELETE CASCADE,
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_conversation_completed_runs_segment ON conversation_completed_runs(conversation_id);
+
       CREATE TABLE IF NOT EXISTS project_memory_items (
         id TEXT PRIMARY KEY,
         task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
@@ -378,7 +386,12 @@ export class Store {
   }
 
   listConversations(taskId) {
-    return this.db.prepare('SELECT * FROM task_conversations WHERE task_id=? ORDER BY sequence DESC').all(taskId);
+    return this.db.prepare(`
+      SELECT c.*, (SELECT COUNT(*) FROM conversation_completed_runs r
+        WHERE r.conversation_id=c.id) AS completed_turns
+      FROM task_conversations c WHERE c.task_id=?
+      ORDER BY c.sequence DESC
+    `).all(taskId);
   }
 
   bindConversation(taskId, url, contextCheckpointVersion = null) {
@@ -519,6 +532,20 @@ export class Store {
     return normalized;
   }
 
+  recordConversationCompletion(taskId, runId) {
+    const run = this.db.prepare('SELECT id,status FROM runs WHERE id=? AND task_id=?').get(runId, taskId);
+    if (!run || run.status !== 'succeeded') throw new Error('conversation_run_not_succeeded');
+    const active = this.db.prepare(
+      "SELECT c.id FROM task_conversations c JOIN tasks t ON t.id=c.task_id AND t.chat_url=c.chat_url WHERE c.task_id=? AND c.status='active' ORDER BY c.sequence DESC LIMIT 1"
+    ).get(taskId);
+    if (!active) throw new Error('conversation_not_bound');
+    const insertion = this.db.prepare(
+      'INSERT OR IGNORE INTO conversation_completed_runs(run_id,task_id,conversation_id,created_at) VALUES(?,?,?,?)'
+    ).run(runId, taskId, active.id, this.now());
+    if (insertion.changes) this.event(taskId,'provider.conversation.turn_completed', { run_id:runId, conversation_id:active.id });
+    return this.db.prepare('SELECT COUNT(*) AS n FROM conversation_completed_runs WHERE conversation_id=?').get(active.id).n;
+  }
+
   heartbeatRun(_taskId, runId) {
     const now = this.now();
     this.db.prepare('UPDATE runs SET heartbeat_at=? WHERE id=? AND status=?').run(now, runId, 'running');
@@ -531,6 +558,17 @@ export class Store {
       .run(status, now, now, error, runId);
     this.db.prepare('UPDATE tasks SET status=?,updated_at=? WHERE id=?').run(error ? 'error' : 'ready', now, taskId);
     this.event(taskId, error ? 'run.failed' : 'run.succeeded', { run_id: runId, error });
+    if (!error) {
+      const active = this.db.prepare("SELECT 1 FROM task_conversations WHERE task_id=? AND status='active' LIMIT 1").get(taskId);
+      if (active) {
+        try { this.recordConversationCompletion(taskId, runId); }
+        catch (accountingError) {
+          this.event(taskId, 'provider.conversation.accounting_failed', {
+            run_id:runId, error:String(accountingError?.message || accountingError)
+          });
+        }
+      }
+    }
   }
 
   recoverInterruptedRuns() {

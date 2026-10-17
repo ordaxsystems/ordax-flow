@@ -1,4 +1,4 @@
-# OrdaX Gratis 0.4.7
+# OrdaX Gratis 0.4.8
 
 Aplicativo desktop Windows independente que usa a sessão normal do ChatGPT Web dentro do próprio processo Electron, com Tasks locais duráveis e uma interface OrdaX própria.
 
@@ -55,7 +55,7 @@ O OrdaX separa **projeto persistente (Task)** de **conversa descartável do prov
 - a coluna esquerda representa Tasks/conversas persistentes do OrdaX;
 - o chat central mostra o histórico canônico da Task;
 - a coluna direita mostra memória, artefatos e segmentos internos do ChatGPT;
-- **Nova conversa interna** arquiva o chat atual, mas não encerra a Task;
+- a rotação automática pode trocar de chat técnico após 24 respostas concluídas no mesmo segmento, sem criar outra Task ou alterar o histórico exibido;
 - na próxima mensagem, o OrdaX abre um novo chat e injeta contexto de continuidade construído do checkpoint e das mensagens/artefatos recentes;
 - o contexto enviado ao novo chat é derivado do estado local, não da memória implícita do ChatGPT.
 
@@ -82,6 +82,14 @@ O provedor recebe um **pacote limitado e determinístico**, construído pela Tas
 O OrdaX **não corta mais o pacote no meio de um registro** e sinaliza quantitativamente memórias e mensagens que não couberam. A íntegra continua no SQLite e no painel de Contexto. O pedido atual do usuário é preservado sem truncamento, mesmo quando a mensagem é maior que o orçamento disponível para continuidade. O ChatGPT não deve supor o conteúdo dos itens omitidos; em projetos extensos, o usuário pode revisar e atualizar o checkpoint e os itens prioritários.
 
 Esta base independe do tipo de projeto e não tenta simular memória infinita do ChatGPT: memória persistente, versões e decisões pertencem ao OrdaX.
+
+### Sessões automáticas por projeto (0.4.8)
+
+A interface principal apresenta **um único histórico do projeto**. O ChatGPT fica oculto como provider; seus segmentos internos são visíveis somente em **Contexto → Detalhes das sessões internas**, recolhido por padrão.
+
+Após **24 respostas concluídas com sucesso** no mesmo segmento, o OrdaX prepara uma nova conversa interna **antes do próximo envio**, injetando o contexto canônico e o histórico limitado da Task. Essa contagem é mantida no SQLite por Run de forma idempotente e preservada após reiniciar o app. A nova conversa só é associada à Task quando uma resposta é concluída e devolve sua URL; o histórico visual não reinicia.
+
+A troca é uma política preventiva de organização do contexto, não um detector garantido de janela cheia. Limites de uso, verificação, autenticação ou erros do ChatGPT não são contornados: nenhuma mensagem é reenviada automaticamente, e uma Run não confirmada permanece falha ou interrompida. A opção manual fica nos detalhes técnicos e não pode ser usada durante uma execução ativa. Não há limite fixo para o número de segmentos internos, mas a qualidade da continuidade depende dos checkpoints e memórias aprovadas.
 
 ## Login e segurança
 

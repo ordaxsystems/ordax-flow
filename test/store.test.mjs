@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { Store } from '../src/store.mjs';
+import { planProviderConversation, SUCCESSFUL_TURNS_PER_SEGMENT } from '../src/conversation-policy.mjs';
 
 function tempStore() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ordax-gratis-'));
@@ -339,4 +340,44 @@ test('a generic long-running project preserves full canonical memory across prov
   assert.equal(task.project_memory.items.length, 60);
   assert.equal(store.buildResumeCapsule(project.id).project_memory.items.length, 60);
   assert.ok(store.buildContinuationPrompt(project.id, request).endsWith('Pedido atual:\n' + request));
+});
+
+test('automatic provider rotation counts only completed runs and is restart-safe', t => {
+  const { dir, dbPath } = tempStore();
+  let store = new Store(dbPath);
+  cleanup(t, dir, () => store);
+  const task = store.createTask('Projeto permanente');
+  store.setChatUrl(task.id,'https://chatgpt.com/c/provider-1');
+  const failed = store.startRun(task.id);
+  store.finishRun(task.id,failed,'response_not_observed');
+  assert.equal(store.getTask(task.id).conversations[0].completed_turns,0);
+  const first = store.startRun(task.id);
+  store.finishRun(task.id,first);
+  assert.equal(store.getTask(task.id).conversations[0].completed_turns,1);
+  assert.equal(store.recordConversationCompletion(task.id,first),1);
+  assert.equal(store.getTask(task.id).conversations[0].completed_turns,1);
+  for (let i=1;i<SUCCESSFUL_TURNS_PER_SEGMENT;i++) {
+    const id=store.startRun(task.id);
+    store.finishRun(task.id,id);
+  }
+  let project=store.getTask(task.id);
+  assert.equal(project.conversations[0].completed_turns,SUCCESSFUL_TURNS_PER_SEGMENT);
+  assert.equal(planProviderConversation(project).automaticRotation,true);
+  assert.equal(store.getTask(task.id).chat_url,'https://chatgpt.com/c/provider-1');
+  store.close();
+  store = new Store(dbPath);
+  project=store.getTask(task.id);
+  assert.equal(planProviderConversation(project).automaticRotation,true);
+  assert.equal(project.conversations.length,1);
+  // The provider returns a new URL after a successful send: only then bind another segment.
+  store.setChatUrl(task.id,'https://chatgpt.com/c/provider-2',0);
+  const newRun=store.startRun(task.id);
+  store.finishRun(task.id,newRun);
+  project=store.getTask(task.id);
+  assert.equal(project.conversations.length,2);
+  assert.equal(project.conversations[0].completed_turns,1);
+  assert.equal(project.conversations[1].completed_turns,SUCCESSFUL_TURNS_PER_SEGMENT);
+  assert.equal(planProviderConversation(project).automaticRotation,false);
+  assert.equal(project.conversations[1].status,'archived');
+  assert.equal(project.conversations[0].status,'active');
 });
