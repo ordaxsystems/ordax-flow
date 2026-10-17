@@ -116,6 +116,39 @@
         <div id="memoryStats" class="memory-stats"></div>
       </section>
 
+      <section class="context-section structured-memory-section">
+        <div class="section-title-row memory-section-title">
+          <span>Memória estruturada</span>
+          <div class="section-title-actions">
+            <small id="structuredMemoryCount">0</small>
+            <button id="addMemoryItem" class="mini-action" type="button" aria-expanded="false" aria-controls="memoryEditor">+</button>
+          </div>
+        </div>
+        <form id="memoryEditor" class="memory-editor hidden">
+          <div class="memory-editor-row">
+            <select id="memoryCategory" aria-label="Categoria da memória">
+              <option value="entity">Entidade</option>
+              <option value="structure">Estrutura</option>
+              <option value="fact">Fato</option>
+              <option value="decision">Decisão</option>
+              <option value="constraint">Restrição</option>
+              <option value="goal">Objetivo</option>
+              <option value="open_loop">Pendência</option>
+              <option value="reference">Referência</option>
+            </select>
+            <input id="memoryKey" maxlength="160" placeholder="Nome ou chave" required />
+          </div>
+          <textarea id="memoryContent" rows="3" maxlength="8000" placeholder="O que precisa permanecer canônico nesta tarefa?" required></textarea>
+          <div class="memory-editor-actions">
+            <button id="cancelMemoryItem" class="mini-secondary" type="button">Cancelar</button>
+            <button class="mini-primary" type="submit">Salvar memória</button>
+          </div>
+        </form>
+        <div id="structuredMemory" class="structured-memory-list">
+          <div class="context-empty">Itens canônicos do projeto aparecerão aqui.</div>
+        </div>
+      </section>
+
       <section class="context-section">
         <div class="section-title-row">
           <span>Conteúdo</span>

@@ -145,3 +145,47 @@ test('Task memory survives provider conversation rotation and seeds the next cha
   assert.equal(capsule.version, 2);
   assert.equal(capsule.conversations.length, 2);
 });
+
+test('Structured project memory is canonical, durable and injected into continuation', t => {
+  const { dir, dbPath } = tempStore();
+  let store = new Store(dbPath);
+  cleanup(t, dir, () => store);
+  const task = store.createTask('Livro - Horizonte');
+
+  const entity = store.upsertProjectMemory(task.id, {
+    category: 'entity', key: 'Caio', content: 'Protagonista de 34 anos; nasceu em Salvador.', source_type: 'manual'
+  });
+  store.upsertProjectMemory(task.id, {
+    category: 'constraint', key: 'Ponto de vista', content: 'Terceira pessoa limitada em Caio.', source_type: 'manual'
+  });
+  store.upsertProjectMemory(task.id, {
+    category: 'structure', key: 'Capítulo 1', content: 'Abertura no litoral antes da viagem.', source_type: 'manual'
+  });
+  store.upsertProjectMemory(task.id, {
+    category: 'entity', key: 'caio', content: 'Protagonista de 35 anos; nasceu em Salvador.', source_type: 'manual'
+  });
+
+  let current = store.getTask(task.id);
+  assert.equal(current.project_memory.summary.total, 3);
+  assert.equal(current.project_memory.items.filter(item => item.key === 'Caio').length, 1);
+  assert.match(current.project_memory.items.find(item => item.id === entity.id).content, /35 anos/);
+  assert.equal(current.continuation.structured_memory_count, 3);
+
+  const prompt = store.buildContinuationPrompt(task.id, 'Abra o capítulo 2.');
+  assert.match(prompt, /Memória estruturada canônica/);
+  assert.match(prompt, /\[ENTIDADE\] Caio: Protagonista de 35 anos/);
+  assert.match(prompt, /\[RESTRICAO\] Ponto de vista/);
+  assert.match(prompt, /Pedido atual:\nAbra o capítulo 2\./);
+
+  store.close();
+  store = new Store(dbPath);
+  current = store.getTask(task.id);
+  assert.equal(current.project_memory.summary.total, 3);
+  assert.equal(store.buildResumeCapsule(task.id).project_memory.items.length, 3);
+
+  const structure = current.project_memory.items.find(item => item.category === 'structure');
+  store.archiveProjectMemory(task.id, structure.id);
+  current = store.getTask(task.id);
+  assert.equal(current.project_memory.summary.total, 2);
+  assert.equal(store.listProjectMemory(task.id, { includeArchived: true }).find(item => item.id === structure.id).status, 'archived');
+});

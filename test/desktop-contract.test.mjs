@@ -111,6 +111,8 @@ test('OrdaX UI exposes responsive conversation, chat and context columns', () =>
   assert.match(html, /context-rail/);
   assert.match(html, /contentAssets/);
   assert.match(html, /memorySummary/);
+  assert.match(html, /structuredMemory/);
+  assert.match(html, /memoryEditor/);
   assert.match(html, /conversationTimeline/);
   assert.match(html, /toggleContext/);
   assert.match(html, /closeContext/);
@@ -131,4 +133,18 @@ test('persistent Task memory can rotate provider conversations without losing th
   assert.match(main, /providerPrompt/);
   assert.match(preload, /rotateConversation/);
   assert.match(ui, /Nova conversa interna/);
+});
+
+test('structured project memory is editable, durable and part of continuation', () => {
+  const store = fs.readFileSync(path.join(root,'src','store.mjs'),'utf8');
+  assert.match(store, /project_memory_items/);
+  assert.match(store, /upsertProjectMemory/);
+  assert.match(store, /archiveProjectMemory/);
+  assert.match(store, /Memória estruturada canônica/);
+  assert.match(main, /ordax:tasks:memory:upsert/);
+  assert.match(main, /ordax:tasks:memory:archive/);
+  assert.match(preload, /upsertProjectMemory/);
+  assert.match(preload, /archiveProjectMemory/);
+  assert.match(ui, /saveMemoryItem/);
+  assert.match(ui, /memoryCategoryLabels/);
 });

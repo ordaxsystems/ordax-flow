@@ -1,4 +1,4 @@
-# OrdaX Gratis 0.4.4
+# OrdaX Gratis 0.4.5
 
 Aplicativo desktop Windows independente que usa a sessão normal do ChatGPT Web dentro do próprio processo Electron, com Tasks locais duráveis e uma interface OrdaX própria.
 
@@ -44,13 +44,13 @@ Assets:
 
 `%LOCALAPPDATA%\OrdaX\Gratis\data\assets\...`
 
-A Task local é o SSOT. Uma Task pode atravessar várias conversas internas do ChatGPT: cada URL/chat é somente um segmento de execução. O app persiste Tasks, mensagens, Runs, eventos, checkpoints, métricas, approvals/actions, imagens locais e o histórico de conversas internas.
+A Task local é o SSOT. Uma Task pode atravessar várias conversas internas do ChatGPT: cada URL/chat é somente um segmento de execução. O app persiste Tasks, mensagens, Runs, eventos, checkpoints, memória estruturada canônica, métricas, approvals/actions, imagens locais e o histórico de conversas internas.
 
 Runs deixados como `running` após encerramento inesperado são reconciliados no boot como `interrupted` e permanecem resumíveis.
 
 ## Continuidade e memória
 
-A versão 0.4.4 separa explicitamente **tarefa/projeto** de **conversa do provider**. Isso permite trabalhos longos, como um livro, continuarem mesmo quando uma conversa do ChatGPT é encerrada ou precisa ser renovada.
+A versão 0.4.5 mantém a separação explícita entre **tarefa/projeto** e **conversa do provider** e adiciona memória estruturada canônica sobre essa base. Isso permite trabalhos longos, como um livro, continuarem mesmo quando uma conversa do ChatGPT é encerrada ou precisa ser renovada.
 
 - a coluna esquerda representa Tasks/conversas persistentes do OrdaX;
 - o chat central mostra o histórico canônico da Task;
@@ -59,7 +59,13 @@ A versão 0.4.4 separa explicitamente **tarefa/projeto** de **conversa do provid
 - na próxima mensagem, o OrdaX abre um novo chat e injeta contexto de continuidade construído do checkpoint e das mensagens/artefatos recentes;
 - o contexto enviado ao novo chat é derivado do estado local, não da memória implícita do ChatGPT.
 
-Esta é a base mínima. Memória semântica especializada (por exemplo capítulos, personagens, fatos, fontes e decisões de um livro) fica para camadas posteriores sem trocar o modelo de persistência.
+### Memória estruturada de projeto
+
+A camada seguinte preserva conhecimento canônico da Task sem depender de inferência implícita do provider. Cada item tem categoria, chave, conteúdo, status e proveniência, e pode ser revisado manualmente no painel Contexto.
+
+Categorias canônicas atuais: `entity`, `structure`, `fact`, `decision`, `constraint`, `goal`, `open_loop` e `reference`. Elas são deliberadamente genéricas: em um livro, `entity` pode representar personagem e `structure` um capítulo; em software, podem representar componente e módulo.
+
+Itens ativos são incluídos no pacote de continuidade antes do histórico recente. Um item com a mesma categoria+chave é atualizado em vez de duplicado; arquivar remove o item do contexto ativo sem apagar o registro. Extração semântica automática fica para uma camada posterior e deverá reutilizar o mesmo SSOT, sempre com proveniência explícita.
 
 ## Login e segurança
 

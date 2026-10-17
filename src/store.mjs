@@ -5,6 +5,8 @@ import fs from 'node:fs';
 
 const SQLITE_OPEN_RETRY_DELAYS_MS = [0, 40, 80, 160, 320, 640, 1280];
 const sqliteOpenWait = new Int32Array(new SharedArrayBuffer(4));
+const PROJECT_MEMORY_CATEGORIES = new Set(['entity','structure','fact','decision','constraint','goal','open_loop','reference']);
+const PROJECT_MEMORY_SOURCE_TYPES = new Set(['manual','message','checkpoint','import','system']);
 
 function isTransientSqliteOpenError(error) {
   const message = String(error?.message || error || '');
@@ -114,6 +116,22 @@ export class Store {
         UNIQUE(task_id, sequence)
       );
       CREATE INDEX IF NOT EXISTS idx_task_conversations_task ON task_conversations(task_id, sequence);
+      CREATE TABLE IF NOT EXISTS project_memory_items (
+        id TEXT PRIMARY KEY,
+        task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+        category TEXT NOT NULL,
+        memory_key TEXT NOT NULL COLLATE NOCASE,
+        content TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'active',
+        source_type TEXT NOT NULL DEFAULT 'manual',
+        source_ref TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        archived_at TEXT,
+        UNIQUE(task_id, category, memory_key)
+      );
+      CREATE INDEX IF NOT EXISTS idx_project_memory_task ON project_memory_items(task_id, status, category, updated_at);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_project_memory_key_nocase ON project_memory_items(task_id, category, memory_key COLLATE NOCASE);
       CREATE TABLE IF NOT EXISTS action_ledger (
         id TEXT PRIMARY KEY,
         task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
@@ -237,6 +255,10 @@ export class Store {
       checkpoint_record: this.latestCheckpoint(id),
       pending_approvals: this.pendingApprovals(id),
       conversations: this.listConversations(id),
+      project_memory: {
+        items: this.listProjectMemory(id),
+        summary: this.projectMemorySummary(id)
+      },
       continuation: this.continuationSummary(id)
     };
   }
@@ -286,6 +308,69 @@ export class Store {
 
   touch(id) { this.db.prepare('UPDATE tasks SET updated_at=? WHERE id=?').run(this.now(), id); }
 
+  listProjectMemory(taskId, { includeArchived = false } = {}) {
+    const where = includeArchived ? 'task_id=?' : "task_id=? AND status='active'";
+    return this.db.prepare(`
+      SELECT id,task_id,category,memory_key AS key,content,status,source_type,source_ref,created_at,updated_at,archived_at
+      FROM project_memory_items WHERE ${where}
+      ORDER BY CASE category
+        WHEN 'goal' THEN 1 WHEN 'constraint' THEN 2 WHEN 'decision' THEN 3 WHEN 'entity' THEN 4
+        WHEN 'structure' THEN 5 WHEN 'fact' THEN 6 WHEN 'open_loop' THEN 7 ELSE 8 END,
+        updated_at DESC,id
+    `).all(taskId);
+  }
+
+  projectMemorySummary(taskId) {
+    const rows = this.db.prepare("SELECT category,COUNT(*) AS n FROM project_memory_items WHERE task_id=? AND status='active' GROUP BY category ORDER BY category").all(taskId);
+    return {
+      total: rows.reduce((sum, row) => sum + Number(row.n || 0), 0),
+      by_category: Object.fromEntries(rows.map(row => [row.category, Number(row.n || 0)]))
+    };
+  }
+
+  upsertProjectMemory(taskId, item = {}) {
+    if (!this.db.prepare('SELECT id FROM tasks WHERE id=?').get(taskId)) throw new Error('task_not_found');
+    const category = String(item.category || '').trim().toLowerCase();
+    const key = String(item.key || '').replace(/\s+/g, ' ').trim();
+    const content = String(item.content || '').trim();
+    const sourceType = String(item.source_type || 'manual').trim().toLowerCase();
+    const sourceRef = item.source_ref == null ? null : String(item.source_ref).trim() || null;
+    if (!PROJECT_MEMORY_CATEGORIES.has(category)) throw new Error('invalid_project_memory_category');
+    if (!key) throw new Error('project_memory_key_required');
+    if (!content) throw new Error('project_memory_content_required');
+    if (!PROJECT_MEMORY_SOURCE_TYPES.has(sourceType)) throw new Error('invalid_project_memory_source');
+    if (key.length > 160 || content.length > 8000) throw new Error('project_memory_too_large');
+
+    const now = this.now();
+    const requestedId = item.id == null ? null : String(item.id).trim() || null;
+    const existingById = requestedId ? this.db.prepare('SELECT id FROM project_memory_items WHERE task_id=? AND id=?').get(taskId, requestedId) : null;
+    if (requestedId && !existingById) throw new Error('project_memory_not_found');
+    const existingByKey = this.db.prepare('SELECT id,memory_key FROM project_memory_items WHERE task_id=? AND category=? AND memory_key COLLATE NOCASE=?').get(taskId, category, key);
+    if (existingById && existingByKey && existingById.id !== existingByKey.id) throw new Error('project_memory_key_conflict');
+    const id = existingById?.id || existingByKey?.id || `memory_${randomUUID()}`;
+    if (existingById || existingByKey) {
+      const storedKey = existingById ? key : existingByKey.memory_key;
+      this.db.prepare("UPDATE project_memory_items SET category=?,memory_key=?,content=?,status='active',source_type=?,source_ref=?,updated_at=?,archived_at=NULL WHERE id=?")
+        .run(category, storedKey, content, sourceType, sourceRef, now, id);
+    } else {
+      this.db.prepare('INSERT INTO project_memory_items(id,task_id,category,memory_key,content,status,source_type,source_ref,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)')
+        .run(id, taskId, category, key, content, 'active', sourceType, sourceRef, now, now);
+    }
+    this.touch(taskId);
+    this.event(taskId, 'project_memory.upserted', { memory_id:id, category, key, source_type:sourceType, source_ref:sourceRef });
+    return this.listProjectMemory(taskId).find(row => row.id === id) || null;
+  }
+
+  archiveProjectMemory(taskId, memoryId) {
+    const row = this.db.prepare('SELECT id,category,memory_key FROM project_memory_items WHERE id=? AND task_id=?').get(memoryId, taskId);
+    if (!row) throw new Error('project_memory_not_found');
+    const now = this.now();
+    this.db.prepare("UPDATE project_memory_items SET status='archived',archived_at=?,updated_at=? WHERE id=?").run(now, now, memoryId);
+    this.touch(taskId);
+    this.event(taskId, 'project_memory.archived', { memory_id:memoryId, category:row.category, key:row.memory_key });
+    return true;
+  }
+
   listConversations(taskId) {
     return this.db.prepare('SELECT * FROM task_conversations WHERE task_id=? ORDER BY sequence DESC').all(taskId);
   }
@@ -328,12 +413,15 @@ export class Store {
     const checkpoint = this.latestCheckpoint(taskId);
     const recent = this.messages(taskId).slice(-10);
     const conversations = this.listConversations(taskId);
+    const projectMemory = this.projectMemorySummary(taskId);
     return {
       checkpoint_version: checkpoint?.version || 0,
       checkpoint_summary: checkpoint?.summary || task.checkpoint || '',
       recent_message_count: recent.length,
       total_messages: Number(this.db.prepare('SELECT COUNT(*) AS n FROM messages WHERE task_id=?').get(taskId)?.n || 0),
       conversation_count: conversations.length,
+      structured_memory_count: projectMemory.total,
+      structured_memory_by_category: projectMemory.by_category,
       active_conversation: conversations.find(row => row.status === 'active') || null
     };
   }
@@ -341,25 +429,38 @@ export class Store {
   buildContinuationPrompt(taskId, prompt) {
     const task = this.getTask(taskId);
     if (!task) return String(prompt || '');
-    const recent = task.messages.slice(-12);
+    const recent = task.messages.slice(-6);
     const checkpoint = task.checkpoint_record;
+    const memoryItems = (task.project_memory?.items || []).slice(0, 12);
+    const categoryLabels = {
+      entity:'ENTIDADE', structure:'ESTRUTURA', fact:'FATO', decision:'DECISAO',
+      constraint:'RESTRICAO', goal:'OBJETIVO', open_loop:'PENDENCIA', reference:'REFERENCIA'
+    };
     const lines = [
       '[CONTEXTO ORDAX - CONTINUIDADE DE UMA TAREFA PERSISTENTE]',
       `Tarefa/projeto: ${task.title}`,
-      `Checkpoint: ${checkpoint?.summary || task.checkpoint || 'Sem checkpoint ainda.'}`,
-      'Histórico recente preservado localmente:'
+      `Checkpoint: ${String(checkpoint?.summary || task.checkpoint || 'Sem checkpoint ainda.').slice(0,1200)}`
     ];
+    if (memoryItems.length) {
+      lines.push('Memória estruturada canônica da tarefa:');
+      for (const item of memoryItems) {
+        const label = categoryLabels[item.category] || item.category.toUpperCase();
+        lines.push(`[${label}] ${item.key}: ${String(item.content || '').replace(/\s+/g,' ').trim().slice(0,380)}`);
+      }
+    }
+    lines.push('Histórico recente preservado localmente:');
     for (const message of recent) {
       const role = message.role === 'assistant' ? 'ASSISTENTE' : 'USUARIO';
       const text = String(message.content || '').replace(/\s+/g,' ').trim();
-      if (text) lines.push(`${role}: ${text.slice(0,1800)}`);
-      for (const asset of message.assets || []) lines.push(`ARTEFATO: ${asset.kind} - ${asset.alt || asset.id}`);
+      if (text) lines.push(`${role}: ${text.slice(0,650)}`);
+      for (const asset of (message.assets || []).slice(0,4)) lines.push(`ARTEFATO: ${asset.kind} - ${asset.alt || asset.id}`);
     }
-    lines.push('Instrução de continuidade: trate este contexto como memória da mesma tarefa. Preserve decisões, nomes, estrutura e trabalho já concluído. Não reinicie o projeto do zero.');
+    lines.push('Instrução de continuidade: a memória estruturada acima é canônica para esta tarefa. Preserve decisões, nomes, fatos, restrições, estrutura e trabalho já concluído. Não reinicie o projeto do zero nem contradiga itens canônicos sem sinalizar o conflito.');
     lines.push('[FIM DO CONTEXTO ORDAX]');
-    lines.push('Pedido atual:');
-    lines.push(String(prompt || '').trim());
-    return lines.join('\n').slice(-16000);
+    const request = String(prompt || '').trim().slice(0,15000);
+    const context = lines.join('\n');
+    const budget = Math.max(0, 16000 - request.length - 20);
+    return `${context.slice(0,budget)}\nPedido atual:\n${request}`;
   }
 
   checkpoint(id, summary, payload = {}) {
@@ -521,6 +622,7 @@ export class Store {
       recent_events: task.events.slice(-20),
       pending_approvals: task.pending_approvals,
       conversations: task.conversations,
+      project_memory: task.project_memory,
       continuation: task.continuation
     };
   }

@@ -252,6 +252,14 @@ ipcMain.handle('ordax:tasks:open', async (_event, id) => {
 });
 ipcMain.handle('ordax:tasks:resume-capsule', (_event, id) => store.buildResumeCapsule(String(id)));
 ipcMain.handle('ordax:tasks:rotate-conversation', (_event, id) => decorateTask(store.rotateConversation(String(id), 'manual_ui')));
+ipcMain.handle('ordax:tasks:memory:upsert', (_event, { taskId, item }) => {
+  store.upsertProjectMemory(String(taskId), { ...(item || {}), source_type:'manual' });
+  return decorateTask(store.getTask(String(taskId)));
+});
+ipcMain.handle('ordax:tasks:memory:archive', (_event, { taskId, memoryId }) => {
+  store.archiveProjectMemory(String(taskId), String(memoryId));
+  return decorateTask(store.getTask(String(taskId)));
+});
 ipcMain.handle('ordax:provider:status', async () => {
   const base = worker.status();
   if (base.active) {

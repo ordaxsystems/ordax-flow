@@ -76,13 +76,45 @@ function friendlyError(error) {
     send_not_observed: 'O ChatGPT não confirmou o envio. Nada foi reenviado automaticamente.',
     response_not_observed: 'O envio ocorreu, mas a resposta não pôde ser confirmada. A memória da tarefa foi preservada.',
     google_login_button_not_found: 'O botão de login do Google não ficou disponível.',
-    google_login_navigation_not_observed: 'O fluxo do Google não confirmou a navegação.'
+    google_login_navigation_not_observed: 'O fluxo do Google não confirmou a navegação.',
+    invalid_project_memory_category: 'Escolha uma categoria válida para a memória.',
+    project_memory_key_required: 'Dê um nome ou chave para este item de memória.',
+    project_memory_content_required: 'Descreva o conteúdo que deve permanecer canônico.',
+    project_memory_key_conflict: 'Já existe outro item com essa categoria e chave.',
+    project_memory_too_large: 'Este item de memória excede o limite permitido.'
   };
   return messages[code] || raw.replace(/^Error invoking remote method '[^']+': Error: /, '');
 }
 
 function statusLabel(status) {
   return ({ ready:'Pronta', running:'Executando', error:'Erro', interrupted:'Interrompida', succeeded:'Concluída' })[status] || status;
+}
+
+const memoryCategoryLabels = {
+  entity:'Entidade', structure:'Estrutura', fact:'Fato', decision:'Decisão',
+  constraint:'Restrição', goal:'Objetivo', open_loop:'Pendência', reference:'Referência'
+};
+
+function setMemoryEditor(open, item = null) {
+  const editor = $('#memoryEditor');
+  const add = $('#addMemoryItem');
+  editor.classList.toggle('hidden', !open);
+  add?.setAttribute('aria-expanded', String(Boolean(open)));
+  if (!open) {
+    editor.reset();
+    delete editor.dataset.memoryId;
+    return;
+  }
+  if (item) {
+    editor.dataset.memoryId = item.id;
+    $('#memoryCategory').value = item.category;
+    $('#memoryKey').value = item.key;
+    $('#memoryContent').value = item.content;
+  } else {
+    editor.reset();
+    delete editor.dataset.memoryId;
+  }
+  $('#memoryKey').focus();
 }
 
 function renderTaskList() {
@@ -121,6 +153,37 @@ function renderContext(task) {
     <div class="stat"><strong>v${checkpointVersion}</strong><span>checkpoint</span></div>
     <div class="stat"><strong>${conversations.length}</strong><span>conversas</span></div>`;
 
+  const memoryItems = task.project_memory?.items || [];
+  $('#structuredMemoryCount').textContent = String(memoryItems.length);
+  $('#structuredMemory').innerHTML = memoryItems.length ? memoryItems.map(item => `
+    <article class="memory-item" data-memory-id="${esc(item.id)}" title="Editar item">
+      <button class="memory-archive" type="button" data-archive-memory="${esc(item.id)}" title="Arquivar memória" aria-label="Arquivar memória">×</button>
+      <div class="memory-item-top">
+        <span class="memory-kind">${esc(memoryCategoryLabels[item.category] || item.category)}</span>
+        <strong>${esc(item.key)}</strong>
+      </div>
+      <p>${esc(item.content)}</p>
+      <small>${item.source_type === 'manual' ? 'Revisado manualmente' : `Fonte: ${esc(item.source_type)}`}</small>
+    </article>`).join('') : '<div class="context-empty">Itens canônicos do projeto aparecerão aqui.</div>';
+  document.querySelectorAll('.memory-item').forEach(card => card.addEventListener('click', event => {
+    if (event.target.closest('[data-archive-memory]')) return;
+    const item = memoryItems.find(row => row.id === card.dataset.memoryId);
+    if (item) setMemoryEditor(true, item);
+  }));
+  document.querySelectorAll('[data-archive-memory]').forEach(button => button.addEventListener('click', async event => {
+    event.stopPropagation();
+    if (!currentTaskId) return;
+    button.disabled = true;
+    try {
+      currentTask = await window.ordax.archiveProjectMemory(currentTaskId, button.dataset.archiveMemory);
+      renderContext(currentTask);
+      await loadTasks();
+    } catch (error) {
+      $('#providerDetail').textContent = friendlyError(error);
+      button.disabled = false;
+    }
+  }));
+
   $('#assetCount').textContent = String(assets.length);
   $('#contentAssets').innerHTML = assets.length ? assets.slice().reverse().map(asset => `
     <button class="content-asset" type="button" data-asset-id="${esc(asset.id)}" title="${esc(asset.alt || 'Imagem')}">
@@ -150,6 +213,7 @@ async function openTask(id) {
   if (!task) return;
   currentTaskId = id;
   currentTask = task;
+  setMemoryEditor(false);
   $('#empty').classList.add('hidden');
   $('#taskPanel').classList.remove('hidden');
   $('#taskTitle').textContent = task.title;
@@ -203,6 +267,28 @@ async function rotateConversation() {
   }
 }
 
+async function saveMemoryItem(event) {
+  event.preventDefault();
+  if (!currentTaskId) return;
+  const editor = $('#memoryEditor');
+  const category = $('#memoryCategory').value;
+  const key = $('#memoryKey').value.trim();
+  const content = $('#memoryContent').value.trim();
+  if (!key || !content) return;
+  const submit = editor.querySelector('[type="submit"]');
+  submit.disabled = true;
+  try {
+    currentTask = await window.ordax.upsertProjectMemory(currentTaskId, { id:editor.dataset.memoryId || undefined, category, key, content });
+    setMemoryEditor(false);
+    renderContext(currentTask);
+    await loadTasks();
+  } catch (error) {
+    $('#providerDetail').textContent = friendlyError(error);
+  } finally {
+    submit.disabled = false;
+  }
+}
+
 async function refreshProvider() {
   if (providerRefreshPending) return;
   providerRefreshPending = true;
@@ -242,10 +328,15 @@ $('#newTask').addEventListener('click', createTask);
 document.querySelector('[data-create-task]')?.addEventListener('click', createTask);
 $('#taskSearch').addEventListener('input', renderTaskList);
 $('#rotateConversation').addEventListener('click', rotateConversation);
+$('#addMemoryItem').addEventListener('click', () => setMemoryEditor($('#memoryEditor').classList.contains('hidden')));
+$('#cancelMemoryItem').addEventListener('click', () => setMemoryEditor(false));
+$('#memoryEditor').addEventListener('submit', saveMemoryItem);
 $('#toggleContext').addEventListener('click', () => setContextOpen(!$('#contextRail').classList.contains('open')));
 $('#closeContext').addEventListener('click', () => setContextOpen(false));
 window.addEventListener('keydown', event => {
-  if (event.key === 'Escape' && $('#contextRail').classList.contains('open')) setContextOpen(false);
+  if (event.key !== 'Escape') return;
+  if (!$('#memoryEditor').classList.contains('hidden')) { setMemoryEditor(false); return; }
+  if ($('#contextRail').classList.contains('open')) setContextOpen(false);
 });
 window.matchMedia('(min-width:1181px)').addEventListener('change', event => {
   if (event.matches) setContextOpen(false);
