@@ -9,6 +9,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const selectors = {
   composer: [
     '#prompt-textarea',
+    '#pending-home-input',
     '#mobile-composer-prompt',
     'textarea[placeholder="Pergunte ao ChatGPT"]',
     'textarea[aria-label*="ChatGPT"]',
@@ -42,12 +43,14 @@ function composerExpression() {
     const sels = ${JSON.stringify(selectors.composer)};
     const all = sels.flatMap(selector => Array.from(document.querySelectorAll(selector)));
     const usable = element => {
-      if (!element || !element.closest('form') || element.disabled || element.getAttribute('aria-disabled') === 'true') return false;
+      if (!element || element.disabled || element.getAttribute('aria-disabled') === 'true') return false;
+      const hasSubmitContext = Boolean(element.closest('form')) || element.id === 'pending-home-input';
+      if (!hasSubmitContext) return false;
       const style = getComputedStyle(element);
       const rect = element.getBoundingClientRect();
       return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
     };
-    return all.find(usable) || all.find(element => element && element.closest('form')) || null;
+    return all.find(usable) || all.find(element => element && (element.closest('form') || element.id === 'pending-home-input')) || null;
   })()`;
 }
 
@@ -392,7 +395,7 @@ export class EmbeddedChatWorker {
       const el = ${composerExpression()};
       if (!el) return { found:false, text:'' };
       const text = 'value' in el ? el.value : (el.innerText || el.textContent || '');
-      return { found:true, formReady:Boolean(el.closest('form')), text:String(text || ''), tag:el.tagName, id:el.id || '' };
+      return { found:true, formReady:Boolean(el.closest('form')) || el.id === 'pending-home-input', text:String(text || ''), tag:el.tagName, id:el.id || '' };
     })()`);
   }
 
@@ -464,7 +467,7 @@ export class EmbeddedChatWorker {
     const initial = await this.#waitForComposer();
     if (initial.text.trim()) throw new Error('chatgpt_draft_present');
 
-    const beforeUserCount = await wc.executeJavaScript(`(() => document.querySelectorAll('[data-message-role="user"],[data-message-author-role="user"],[data-message-author="user"]').length)()`).catch(() => 0);
+    const beforeUserCount = await wc.executeJavaScript(`(() => document.querySelectorAll('[data-message-role="user"],[data-message-author-role="user"],[data-message-author="user"],[data-user-message-bubble="true"]').length)()`).catch(() => 0);
     const prepared = await wc.executeJavaScript(`(() => {
       const sels = ${JSON.stringify(selectors.composer)};
       const input = ${composerExpression()};
@@ -496,7 +499,7 @@ export class EmbeddedChatWorker {
           const composer = ${composerExpression()};
           const text = composer ? ('value' in composer ? composer.value : (composer.innerText || composer.textContent || '')) : '';
           const body = document.body?.innerText || '';
-          const userCount = document.querySelectorAll('[data-message-role=\"user\"],[data-message-author-role=\"user\"],[data-message-author=\"user\"]').length;
+          const userCount = document.querySelectorAll('[data-message-role=\"user\"],[data-message-author-role=\"user\"],[data-message-author=\"user\"],[data-user-message-bubble=\"true\"]').length;
           return { empty:!String(text||'').trim(), promptVisible:body.includes(${JSON.stringify(prompt)}), userCount }; 
         })()`).catch(() => ({ empty:false, promptVisible:false, userCount:0 }));
         if (sent.empty && (sent.userCount > beforeUserCount || sent.promptVisible || this.streamContext?.providerRequestSeenAt)) return true;
@@ -507,7 +510,8 @@ export class EmbeddedChatWorker {
     const submitState = await wc.executeJavaScript(`(() => {
       const input = ${composerExpression()};
       const form = input?.closest('form');
-      const send = form ? ${JSON.stringify(selectors.send)}.flatMap(selector => Array.from(form.querySelectorAll(selector))).find(el => el && !el.disabled && el.getAttribute('aria-disabled') !== 'true' && el.getClientRects().length) : null;
+      const scope = form || document;
+      const send = ${JSON.stringify(selectors.send)}.flatMap(selector => Array.from(scope.querySelectorAll(selector))).find(el => el && !el.disabled && el.getAttribute('aria-disabled') !== 'true' && el.getClientRects().length) || null;
       const r = send?.getBoundingClientRect();
       return { form:!!form, button:!!send, x:r? r.left+r.width/2:null, y:r? r.top+r.height/2:null };
     })()`).catch(() => ({ form:false, button:false, x:null, y:null }));
@@ -517,7 +521,8 @@ export class EmbeddedChatWorker {
       await wc.executeJavaScript(`(() => {
         const input = ${composerExpression()};
         const form = input?.closest('form');
-        const send = form ? ${JSON.stringify(selectors.send)}.flatMap(selector => Array.from(form.querySelectorAll(selector))).find(el => el && !el.disabled && el.getAttribute('aria-disabled') !== 'true' && el.getClientRects().length) : null;
+        const scope = form || document;
+        const send = ${JSON.stringify(selectors.send)}.flatMap(selector => Array.from(scope.querySelectorAll(selector))).find(el => el && !el.disabled && el.getAttribute('aria-disabled') !== 'true' && el.getClientRects().length) || null;
         if (!send) return false; send.click(); return true;
       })()`).catch(() => false);
       if (await observeSent(18)) { if (this.streamContext) this.streamContext.submittedAt = Date.now(); return; }

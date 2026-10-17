@@ -6,6 +6,7 @@ let directMode = false;
 let loginFlowVisible = false;
 let observerMode = 'auto';
 let allTasks = [];
+let providerRefreshPending = false;
 
 function esc(value = '') {
   return String(value).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
@@ -203,6 +204,8 @@ async function rotateConversation() {
 }
 
 async function refreshProvider() {
+  if (providerRefreshPending) return;
+  providerRefreshPending = true;
   try {
     const status = await window.ordax.providerStatus();
     const verification = status.verification_required;
@@ -222,6 +225,8 @@ async function refreshProvider() {
     $('#providerText').textContent = 'ChatGPT • erro';
     $('#providerDetail').textContent = friendlyError(error);
     $('#providerDot').className = 'dot error';
+  } finally {
+    providerRefreshPending = false;
   }
 }
 
@@ -334,5 +339,5 @@ window.ordax.onTaskStream(payload => {
 await window.ordax.setChatVisible(false);
 workspace = await window.ordax.workspace();
 await loadTasks();
-await refreshProvider();
+refreshProvider();
 setInterval(refreshProvider, 1500);

@@ -29,6 +29,9 @@ test('desktop is single-instance with canonical durable AppData state', () => {
   assert.match(main, /store\.close\(\)/);
   assert.match(main, /executionTail/);
   assert.match(main, /enqueueExecution/);
+  assert.match(main, /providerHealthInFlight/);
+  assert.match(main, /providerHealthCache/);
+  assert.match(main, /health_pending/);
 });
 
 test('embedded ChatGPT surface is sandboxed and navigation-scoped', () => {
@@ -39,6 +42,8 @@ test('embedded ChatGPT surface is sandboxed and navigation-scoped', () => {
   assert.match(worker, /will-navigate/);
   assert.match(worker, /chatgpt\\\.com\|auth\\\.openai\\\.com\|accounts\\\.google\\\.com/);
   assert.match(worker, /formReady/);
+  assert.match(worker, /pending-home-input/);
+  assert.match(worker, /const scope = form \|\| document/);
   assert.match(worker, /requestSubmit/);
 });
 
@@ -67,6 +72,7 @@ test('current ChatGPT DOM identity binds each run to its own assistant message',
   assert.match(worker, /seenAssistantMessageIds/);
   assert.match(worker, /currentAssistantMessageId/);
   assert.match(worker, /latestUserText/);
+  assert.match(worker, /data-user-message-bubble/);
 });
 
 test('live E2E gates are exclusive and detect cross-run leaks', () => {

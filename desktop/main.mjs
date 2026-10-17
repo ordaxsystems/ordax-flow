@@ -82,6 +82,8 @@ let liveRun = null;
 const persistedObserverMode = store.getWorkspaceSession()?.metadata?.observer_mode;
 let observerMode = ['auto','fast','beta'].includes(persistedObserverMode) ? persistedObserverMode : 'auto';
 let workerPreload = { ready:false, url:null, at:null };
+let providerHealthInFlight = null;
+let providerHealthCache = null;
 let executionTail = Promise.resolve();
 const LEFT_WIDTH = 470;
 
@@ -250,7 +252,17 @@ ipcMain.handle('ordax:tasks:open', async (_event, id) => {
 });
 ipcMain.handle('ordax:tasks:resume-capsule', (_event, id) => store.buildResumeCapsule(String(id)));
 ipcMain.handle('ordax:tasks:rotate-conversation', (_event, id) => decorateTask(store.rotateConversation(String(id), 'manual_ui')));
-ipcMain.handle('ordax:provider:status', async () => ({ ...(await worker.health()), observer_mode:observerMode, worker_preload:workerPreload }));
+ipcMain.handle('ordax:provider:status', async () => {
+  if (!providerHealthInFlight) {
+    providerHealthInFlight = worker.health()
+      .then(status => { providerHealthCache = status; return status; })
+      .finally(() => { providerHealthInFlight = null; });
+  }
+  const timeout = new Promise(resolve => setTimeout(() => resolve(null), 900));
+  const fresh = await Promise.race([providerHealthInFlight, timeout]);
+  const status = fresh || providerHealthCache || { ...worker.status(), composer_ready:false, verification_required:false, auth_state:'loading' };
+  return { ...status, observer_mode:observerMode, worker_preload:workerPreload, health_pending:!fresh };
+});
 ipcMain.handle('ordax:provider:observer-mode:get', () => observerMode);
 ipcMain.handle('ordax:provider:observer-mode:set', (_event, mode) => {
   const next = String(mode || '').toLowerCase();
