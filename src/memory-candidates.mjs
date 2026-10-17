@@ -27,12 +27,24 @@ export class MemoryCandidateLedger {
   }
 
   list(taskId) {
-    return this.store.db.prepare([
+    const rows = this.store.db.prepare([
       'SELECT id,task_id,source_message_id,extractor_version,category,',
       'memory_key AS key, proposed_content AS content, evidence,status,',
       'memory_item_id,created_at,reviewed_at FROM project_memory_candidates',
       "WHERE task_id=? AND status='pending' ORDER BY created_at DESC,id DESC LIMIT 50"
     ].join(' ')).all(taskId);
+    const findCanon = this.store.db.prepare(
+      "SELECT id,content,updated_at FROM project_memory_items WHERE task_id=? AND category=? AND memory_key COLLATE NOCASE=? AND status='active'"
+    );
+    return rows.map(row => {
+      const canon = findCanon.get(taskId,row.category,row.key);
+      return {
+        ...row,
+        canonical_content: canon?.content || null,
+        canonical_memory_id: canon?.id || null,
+        conflict: Boolean(canon && canon.content.trim() !== row.content.trim())
+      };
+    });
   }
 
   suggestFromMessage(taskId, message) {
@@ -82,18 +94,28 @@ export class MemoryCandidateLedger {
 
   review(taskId,candidateId,action,changes={}) {
     const db = this.store.db;
-    const candidate = db.prepare('SELECT * FROM project_memory_candidates WHERE id=? AND task_id=?').get(candidateId,taskId);
-    if (!candidate) throw new Error('project_memory_candidate_not_found');
-    if (candidate.status !== 'pending') throw new Error('project_memory_candidate_reviewed');
     if (action !== 'accept' && action !== 'reject') throw new Error('invalid_project_memory_review');
     db.exec('BEGIN IMMEDIATE');
     try {
+      const candidate = db.prepare('SELECT * FROM project_memory_candidates WHERE id=? AND task_id=?').get(candidateId,taskId);
+      if (!candidate) throw new Error('project_memory_candidate_not_found');
+      if (candidate.status !== 'pending') throw new Error('project_memory_candidate_reviewed');
       let memory = null;
       if (action === 'accept') {
+        const category = changes.category ?? candidate.category;
+        const key = String(changes.key ?? candidate.memory_key).replace(/\s+/g, ' ').trim();
+        const content = String(changes.content ?? candidate.proposed_content).trim();
+        const canon = db.prepare(
+          "SELECT id,content FROM project_memory_items WHERE task_id=? AND category=? AND memory_key COLLATE NOCASE=? AND status='active'"
+        ).get(taskId, category, key);
+        if (canon && canon.content.trim() !== content &&
+          !(changes.confirm_conflict === true &&
+            changes.expected_canonical_memory_id === canon.id &&
+            changes.expected_canonical_content === canon.content)) {
+          throw new Error('project_memory_conflict_requires_review');
+        }
         memory = this.store.upsertProjectMemory(taskId,{
-          category:changes.category ?? candidate.category,
-          key:changes.key ?? candidate.memory_key,
-          content:changes.content ?? candidate.proposed_content,
+          category, key, content,
           source_type:'message',
           source_ref:candidate.source_message_id
         });

@@ -251,3 +251,59 @@ test('candidate review rollback preserves pending proposal when canon validation
   assert.equal(store.getTask(task.id).project_memory.summary.total,0);
   assert.throws(() => store.memoryCandidates.review('task_unknown',candidate.id,'reject'), /project_memory_candidate_not_found/);
 });
+
+test('conflicting suggestion never silently overwrites approved canon', t => {
+  const { dir, dbPath } = tempStore();
+  const store = new Store(dbPath);
+  cleanup(t,dir,()=>store);
+  const task = store.createTask('Livro - Proteção de cânone');
+  const existing = store.upsertProjectMemory(task.id,{
+    category:'entity',key:'Caio',content:'Caio tem 34 anos.',source_type:'manual'
+  });
+  store.appendMessage(task.id,'user','Personagem Caio: Caio agora tem 35 anos.');
+  const candidate = store.memoryCandidates.list(task.id)[0];
+  assert.equal(candidate.conflict,true);
+  assert.equal(candidate.canonical_content,'Caio tem 34 anos.');
+  assert.equal(candidate.canonical_memory_id,existing.id);
+  assert.throws(
+    () => store.memoryCandidates.review(task.id,candidate.id,'accept'),
+    /project_memory_conflict_requires_review/
+  );
+  assert.equal(store.projectMemorySummary(task.id).total,1);
+  assert.equal(store.listProjectMemory(task.id)[0].content,'Caio tem 34 anos.');
+  assert.equal(store.memoryCandidates.pendingCount(task.id),1);
+  assert.throws(
+    () => store.memoryCandidates.review(task.id,candidate.id,'accept',{
+      confirm_conflict:true,expected_canonical_memory_id:existing.id,
+      expected_canonical_content:'Caio tinha 34 anos.'
+    }),/project_memory_conflict_requires_review/
+  );
+  assert.equal(store.memoryCandidates.pendingCount(task.id),1);
+  store.memoryCandidates.review(task.id,candidate.id,'accept',{
+    confirm_conflict:true,expected_canonical_memory_id:existing.id,
+    expected_canonical_content:'Caio tem 34 anos.'
+  });
+  assert.equal(store.listProjectMemory(task.id)[0].content,'Caio agora tem 35 anos.');
+  assert.equal(store.memoryCandidates.pendingCount(task.id),0);
+  assert.match(store.buildContinuationPrompt(task.id,'Continue.'),/Caio agora tem 35 anos/);
+});
+
+test('concurrent canon revision makes an earlier conflict confirmation stale', t => {
+  const { dir, dbPath } = tempStore();
+  const store = new Store(dbPath);
+  cleanup(t,dir,()=>store);
+  const task = store.createTask('Pesquisa versionada');
+  const canon = store.upsertProjectMemory(task.id,{category:'fact',key:'Ano',content:'O ano é 2025.'});
+  store.appendMessage(task.id,'user','Fato: o ano agora é 2026.');
+  // The explicit fact prefix uses the statement as the key, so create a targeted candidate from named content.
+  store.appendMessage(task.id,'user','Personagem Caio: Caio tem 35 anos.');
+  const entity = store.upsertProjectMemory(task.id,{category:'entity',key:'Caio',content:'Caio tem 34 anos.'});
+  const suggestion = store.memoryCandidates.list(task.id).find(x=>x.category==='entity');
+  assert.ok(suggestion?.conflict);
+  store.upsertProjectMemory(task.id,{id:entity.id,category:'entity',key:'Caio',content:'Caio tem 36 anos.'});
+  assert.throws(() => store.memoryCandidates.review(task.id,suggestion.id,'accept',{
+    confirm_conflict:true,expected_canonical_memory_id:entity.id,
+    expected_canonical_content:'Caio tem 34 anos.'
+  }),/project_memory_conflict_requires_review/);
+  assert.equal(store.listProjectMemory(task.id).find(x=>x.key==='Caio').content,'Caio tem 36 anos.');
+});

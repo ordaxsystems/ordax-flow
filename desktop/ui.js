@@ -84,7 +84,8 @@ function friendlyError(error) {
     project_memory_too_large: 'Este item de memória excede o limite permitido.',
     project_memory_candidate_not_found: 'Esta sugestão não foi encontrada.',
     project_memory_candidate_reviewed: 'Esta sugestão já foi revisada.',
-    invalid_project_memory_review: 'Ação de revisão inválida.'
+    invalid_project_memory_review: 'Ação de revisão inválida.',
+    project_memory_conflict_requires_review: 'A memória aprovada mudou ou exige comparação. Revise os dois valores antes de confirmar.'
   };
   return messages[code] || raw.replace(/^Error invoking remote method '[^']+': Error: /, '');
 }
@@ -100,6 +101,8 @@ const memoryCategoryLabels = {
 
 function setMemoryEditor(open, item = null) {
   const editor = $('#memoryEditor');
+  $('#memoryConflictReview').classList.add('hidden');
+  $('#memoryConfirmReplace').checked = false;
   const add = $('#addMemoryItem');
   editor.classList.toggle('hidden', !open);
   add?.setAttribute('aria-expanded', String(Boolean(open)));
@@ -123,6 +126,25 @@ function setMemoryEditor(open, item = null) {
   $('#memoryKey').focus();
 }
 
+function syncMemoryConflictReview() {
+  const editor = $('#memoryEditor');
+  const box = $('#memoryConflictReview');
+  const candidateId = editor.dataset.candidateId;
+  const category = $('#memoryCategory').value;
+  const key = $('#memoryKey').value.trim().toLocaleLowerCase('pt-BR');
+  const proposed = $('#memoryContent').value.trim();
+  const canon = candidateId ? (currentTask?.project_memory?.items || []).find(item =>
+    item.category === category && item.key.toLocaleLowerCase('pt-BR') === key) : null;
+  const conflict = Boolean(canon && canon.content.trim() !== proposed);
+  box.classList.toggle('hidden', !conflict);
+  $('#memoryConfirmReplace').checked = false;
+  if (conflict) {
+    $('#memoryCanonicalBefore').textContent = canon.content;
+    $('#memoryCanonicalAfter').textContent = proposed;
+  }
+  return canon && conflict ? canon : null;
+}
+
 function renderMemoryCandidates(task) {
   const candidates = task.project_memory?.candidates || [];
   $('#memoryCandidateCount').textContent = String(task.project_memory?.pending_count || candidates.length);
@@ -131,9 +153,10 @@ function renderMemoryCandidates(task) {
       '<div class="memory-item-top"><span class="memory-kind">' + esc(memoryCategoryLabels[item.category] || item.category) + '</span>' +
       '<strong>' + esc(item.key) + '</strong></div>' +
       '<p>' + esc(item.content) + '</p>' +
+      (item.conflict ? '<div class="memory-conflict-alert"><strong>⚠ Diverge da memória aprovada</strong><p>Atual: ' + esc(item.canonical_content) + '</p><p>Proposto: ' + esc(item.content) + '</p></div>' : '') +
       '<small>Origem: mensagem da conversa · ' + esc(item.evidence) + '</small>' +
       '<div class="memory-review-actions">' +
-        '<button class="mini-primary" type="button" data-review="accept">Aprovar</button>' +
+        (item.conflict ? '<button class="mini-primary" type="button" data-review="edit">Revisar conflito</button>' : '<button class="mini-primary" type="button" data-review="accept">Aprovar</button>') +
         '<button class="mini-secondary" type="button" data-review="edit">Editar</button>' +
         '<button class="mini-secondary" type="button" data-review="reject">Descartar</button>' +
       '</div></article>'
@@ -146,6 +169,7 @@ function renderMemoryCandidates(task) {
     if (button.dataset.review === 'edit') {
       setMemoryEditor(true, { category:item.category, key:item.key, content:item.content });
       $('#memoryEditor').dataset.candidateId = item.id;
+      syncMemoryConflictReview();
       $('#memoryContent').focus();
       return;
     }
@@ -328,8 +352,22 @@ async function saveMemoryItem(event) {
   submit.disabled = true;
   try {
     const taskId = currentTaskId;
+    const canon = editor.dataset.candidateId ? (currentTask?.project_memory?.items || []).find(item =>
+      item.category === category && item.key.toLocaleLowerCase('pt-BR') === key.toLocaleLowerCase('pt-BR')) : null;
+    const conflict = Boolean(canon && canon.content.trim() !== content);
+    if (conflict && !$('#memoryConfirmReplace').checked) {
+      $('#providerDetail').textContent = 'Confira e confirme a substituição da memória aprovada.';
+      return;
+    }
     const updated = editor.dataset.candidateId
-      ? await window.ordax.reviewMemoryCandidate(taskId, editor.dataset.candidateId, 'accept', { category, key, content })
+      ? await window.ordax.reviewMemoryCandidate(taskId, editor.dataset.candidateId, 'accept', {
+        category, key, content,
+        ...(conflict ? {
+          confirm_conflict:true,
+          expected_canonical_memory_id:canon.id,
+          expected_canonical_content:canon.content
+        } : {})
+      })
       : await window.ordax.upsertProjectMemory(taskId, { id:editor.dataset.memoryId || undefined, category, key, content });
     if (currentTaskId === taskId) {
       currentTask = updated;
@@ -386,6 +424,11 @@ $('#rotateConversation').addEventListener('click', rotateConversation);
 $('#addMemoryItem').addEventListener('click', () => setMemoryEditor($('#memoryEditor').classList.contains('hidden')));
 $('#cancelMemoryItem').addEventListener('click', () => setMemoryEditor(false));
 $('#memoryEditor').addEventListener('submit', saveMemoryItem);
+for (const id of ['memoryCategory','memoryKey','memoryContent']) {
+  $('#'+id).addEventListener(id === 'memoryCategory' ? 'change' : 'input', () => {
+    if ($('#memoryEditor').dataset.candidateId) syncMemoryConflictReview();
+  });
+}
 $('#scanMemoryCandidates').addEventListener('click', async () => {
   if (!currentTaskId) return;
   const taskId = currentTaskId;

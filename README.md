@@ -73,6 +73,8 @@ A conversa pode gerar **candidatos**, nunca fatos canônicos automaticamente. O 
 
 Os candidatos ficam em `project_memory_candidates`, com mensagem de origem, versão do detector, evidência, decisão e horário de revisão. Uma rejeição não reaparece ao reanalisar a mesma mensagem; aprovações atualizam `project_memory_items` com proveniência da mensagem e transação SQLite. O pacote de continuidade inclui **somente memórias aprovadas**, jamais sugestões pendentes ou recusadas. Nesta fase não há extração semântica livre nem aprovação silenciosa.
 
+**Proteção de conflitos:** quando uma sugestão aponta para a mesma categoria+chave de uma memória já aprovada, a UI mostra os valores **atual** e **proposto**. Substituir exige abrir a revisão e marcar confirmação explícita. O backend confere dentro da transação o ID e conteúdo canônico esperado; se alguém atualizou o item enquanto ele estava aberto, a aprovação falha sem sobrescrever o valor novo.
+
 ## Login e segurança
 
 - login oficial ChatGPT/Google dentro do Electron;

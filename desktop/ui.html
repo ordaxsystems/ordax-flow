@@ -152,6 +152,14 @@
             <input id="memoryKey" maxlength="160" placeholder="Nome ou chave" required />
           </div>
           <textarea id="memoryContent" rows="3" maxlength="8000" placeholder="O que precisa permanecer canônico nesta tarefa?" required></textarea>
+          <div id="memoryConflictReview" class="memory-conflict-review hidden">
+            <strong>Conflito com memória aprovada</strong>
+            <span>Valor atual:</span>
+            <p id="memoryCanonicalBefore"></p>
+            <span>Valor proposto:</span>
+            <p id="memoryCanonicalAfter"></p>
+            <label><input id="memoryConfirmReplace" type="checkbox" /> Confirmo substituir o valor canônico acima</label>
+          </div>
           <div class="memory-editor-actions">
             <button id="cancelMemoryItem" class="mini-secondary" type="button">Cancelar</button>
             <button class="mini-primary" type="submit">Salvar memória</button>

@@ -174,6 +174,12 @@ button{color:inherit}
 .memory-review-actions{display:flex;gap:5px;flex-wrap:wrap;margin-top:9px}
 .memory-review-actions button{flex:1;min-width:60px}
 .memory-review-actions button:disabled{opacity:.45;cursor:wait}
+.memory-conflict-alert,.memory-conflict-review{margin:8px 0;padding:9px;border:1px solid #705d36;border-radius:9px;background:#201a12;color:#e8c893}
+.memory-conflict-alert strong,.memory-conflict-review strong{display:block;font-size:9px;margin-bottom:6px}
+.memory-conflict-alert p,.memory-conflict-review p{margin:4px 0;font-size:9px;white-space:pre-wrap;overflow-wrap:anywhere;color:#c9bba3}
+.memory-conflict-review span{display:block;font-size:8px;color:#a99a82;margin-top:8px}
+.memory-conflict-review label{display:flex;align-items:flex-start;gap:7px;font-size:9px;line-height:1.45;color:#ead5ac;margin-top:9px;cursor:pointer}
+.memory-conflict-review input{margin:1px 0 0;flex:none}
 .structured-memory-list{display:flex;flex-direction:column;gap:7px}
 .memory-item{position:relative;border:1px solid #202b38;border-radius:10px;background:#101720;padding:9px 28px 9px 9px}
 .memory-item-top{display:flex;align-items:center;gap:6px;margin-bottom:5px;min-width:0}
