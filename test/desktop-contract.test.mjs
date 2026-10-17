@@ -31,6 +31,7 @@ test('desktop is single-instance with canonical durable AppData state', () => {
   assert.match(main, /enqueueExecution/);
   assert.match(main, /providerHealthInFlight/);
   assert.match(main, /providerHealthCache/);
+  assert.match(main, /if \(base\.active\)/);
   assert.match(main, /health_pending/);
 });
 

@@ -253,6 +253,11 @@ ipcMain.handle('ordax:tasks:open', async (_event, id) => {
 ipcMain.handle('ordax:tasks:resume-capsule', (_event, id) => store.buildResumeCapsule(String(id)));
 ipcMain.handle('ordax:tasks:rotate-conversation', (_event, id) => decorateTask(store.rotateConversation(String(id), 'manual_ui')));
 ipcMain.handle('ordax:provider:status', async () => {
+  const base = worker.status();
+  if (base.active) {
+    const cached = providerHealthCache || { composer_ready:false, verification_required:false, auth_state:'loading' };
+    return { ...cached, ...base, observer_mode:observerMode, worker_preload:workerPreload, health_pending:Boolean(providerHealthInFlight) };
+  }
   if (!providerHealthInFlight) {
     providerHealthInFlight = worker.health()
       .then(status => { providerHealthCache = status; return status; })
@@ -260,7 +265,7 @@ ipcMain.handle('ordax:provider:status', async () => {
   }
   const timeout = new Promise(resolve => setTimeout(() => resolve(null), 900));
   const fresh = await Promise.race([providerHealthInFlight, timeout]);
-  const status = fresh || providerHealthCache || { ...worker.status(), composer_ready:false, verification_required:false, auth_state:'loading' };
+  const status = fresh || providerHealthCache || { ...base, composer_ready:false, verification_required:false, auth_state:'loading' };
   return { ...status, observer_mode:observerMode, worker_preload:workerPreload, health_pending:!fresh };
 });
 ipcMain.handle('ordax:provider:observer-mode:get', () => observerMode);
