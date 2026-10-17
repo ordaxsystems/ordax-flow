@@ -1,0 +1,69 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+const root = path.resolve(import.meta.dirname, '..');
+const pkg = JSON.parse(fs.readFileSync(path.join(root,'package.json'),'utf8'));
+const main = fs.readFileSync(path.join(root,'desktop','main.mjs'),'utf8');
+const worker = fs.readFileSync(path.join(root,'desktop','embedded-worker.mjs'),'utf8');
+const workerPreload = fs.readFileSync(path.join(root,'desktop','worker-preload.cjs'),'utf8');
+const preload = fs.readFileSync(path.join(root,'desktop','preload.cjs'),'utf8');
+const ui = fs.readFileSync(path.join(root,'desktop','ui.js'),'utf8');
+
+test('desktop package ships only canonical desktop runtime', () => {
+  assert.equal(pkg.main, 'desktop/main.mjs');
+  assert.deepEqual(pkg.build.files, ['desktop/**/*','src/store.mjs','package.json']);
+  assert.equal(pkg.dependencies, undefined);
+  assert.ok(!JSON.stringify(pkg).includes('playwright-core'));
+  assert.ok(!JSON.stringify(pkg.build.files).includes('chrome-extension'));
+});
+
+test('desktop is single-instance with canonical durable AppData state', () => {
+  assert.match(main, /requestSingleInstanceLock/);
+  assert.match(main, /OrdaX['"], ['"]Gratis/);
+  assert.match(main, /recoverInterruptedRuns/);
+  assert.match(main, /heartbeatRun/);
+});
+
+test('embedded ChatGPT surface is sandboxed and navigation-scoped', () => {
+  assert.match(worker, /contextIsolation:\s*true/);
+  assert.match(worker, /sandbox:\s*true/);
+  assert.match(worker, /nodeIntegration:\s*false/);
+  assert.match(worker, /setPermissionRequestHandler/);
+  assert.match(worker, /will-navigate/);
+  assert.match(worker, /chatgpt\\\.com\|auth\\\.openai\\\.com\|accounts\\\.google\\\.com/);
+  assert.match(worker, /formReady/);
+  assert.match(worker, /requestSubmit/);
+});
+
+
+test('ChatGPT worker is hidden by default and direct mode is explicit', () => {
+  assert.match(main, /let chatVisible = false/);
+  assert.match(ui, /directMode/);
+  assert.match(ui, /setChatVisible\(false\)/);
+});
+
+test('assistant output streams into OrdaX UI through isolated worker preload', () => {
+  assert.match(worker, /worker-preload\.cjs/);
+  assert.match(workerPreload, /MutationObserver/);
+  assert.match(workerPreload, /ordax:worker:stream/);
+  assert.match(main, /ordax:task:stream/);
+  assert.match(preload, /onTaskStream/);
+  assert.match(ui, /updateLiveRun/);
+});
+
+test('send readiness is state-driven without legacy 1800ms fixed delay', () => {
+  assert.doesNotMatch(worker, /sleep\(1800\)/);
+  assert.match(worker, /formReady/);
+  assert.match(worker, /requestSubmit/);
+});
+
+
+test('observer mode is persisted and fast path never replaces durable Task state', () => {
+  assert.match(main, /observer_mode/);
+  assert.match(main, /provider:observer-mode:set/);
+  assert.match(worker, /setObserverMode/);
+  assert.match(worker, /Network\.enable/);
+  assert.match(worker, /networkFirstByteAt/);
+  assert.match(ui, /observerMode/);
+});

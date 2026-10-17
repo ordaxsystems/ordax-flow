@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>OrdaX Gratis</title>
+  <link rel="stylesheet" href="./ui.css" />
+</head>
+<body>
+  <main class="sidebar">
+    <header class="brand-row">
+      <div class="logo">O</div>
+      <div>
+        <h1>OrdaX Gratis</h1>
+        <p>ChatGPT Web dentro do app</p>
+      </div>
+    </header>
+
+    <section class="provider-card">
+      <div>
+        <strong id="providerText">Inicializando…</strong>
+        <small id="providerDetail">Sessão persistente própria</small>
+      </div>
+      <span id="providerDot" class="dot"></span>
+    </section>
+
+    <div class="toolbar">
+      <button id="newTask" class="primary">+ Nova tarefa</button>
+      <button id="login" class="secondary">Entrar com Google</button>
+      <button id="directMode" class="secondary">Modo direto</button>
+    </div>
+    <div class="observer-row">
+      <label for="observerMode">Resposta</label>
+      <select id="observerMode">
+        <option value="auto">Automático</option>
+        <option value="fast">Fast experimental</option>
+        <option value="beta">Beta estável</option>
+      </select>
+      <span id="observerHint">Fast quando disponível, Beta como safety net.</span>
+    </div>
+
+    <section class="tasks-wrap">
+      <div class="section-title">Tarefas</div>
+      <div id="tasks" class="tasks"></div>
+    </section>
+
+    <section id="taskPanel" class="task-panel hidden">
+      <div class="task-head">
+        <div>
+          <h2 id="taskTitle"></h2>
+          <p id="taskCheckpoint"></p>
+        </div>
+      </div>
+      <div id="recoveryBanner" class="recovery hidden"></div>
+      <div id="messages" class="messages"></div>
+      <form id="composer" class="composer">
+        <textarea id="prompt" rows="3" placeholder="Escreva para o ChatGPT…"></textarea>
+        <button id="send" class="primary" type="submit">Enviar</button>
+        <div id="runStatus" class="run-status hidden"></div>
+      </form>
+      <div class="task-meta">
+        <span id="taskId"></span>
+        <span id="workspaceId"></span>
+      </div>
+    </section>
+
+    <section id="empty" class="empty">
+      <h2>Seu ChatGPT, dentro do OrdaX</h2>
+      <p>Entre uma vez, crie uma tarefa e use texto ou imagens. O estado fica no OrdaX, não depende da memória da conversa.</p>
+    </section>
+  </main>
+  <script type="module" src="./ui.js"></script>
+</body>
+</html>

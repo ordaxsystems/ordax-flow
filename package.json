@@ -1,0 +1,50 @@
+{
+  "name": "ordax-gratis",
+  "version": "0.4.2",
+  "private": true,
+  "type": "module",
+  "main": "desktop/main.mjs",
+  "description": "OrdaX Gratis - desktop ChatGPT Web client with durable local Tasks and hidden worker execution.",
+  "author": "OrdaX Systems",
+  "scripts": {
+    "start": "electron .",
+    "check": "node --check desktop/main.mjs && node --check desktop/embedded-worker.mjs && node --check desktop/ui.js",
+    "test": "node --test test/*.test.mjs",
+    "validate": "npm run check && npm test",
+    "test:live:text": "node scripts/live-ui-text-smoke.cjs",
+    "test:live:image": "node scripts/live-ui-image-smoke.cjs",
+    "test:live:restart": "node scripts/live-ui-restart-smoke.cjs",
+    "benchmark": "node scripts/read-benchmark.cjs",
+    "build:win": "electron-builder --win portable"
+  },
+  "devDependencies": {
+    "electron": "^44.8.0",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "br.com.ordax.gratis",
+    "productName": "OrdaX Gratis",
+    "asar": true,
+    "files": [
+      "desktop/**/*",
+      "src/store.mjs",
+      "package.json"
+    ],
+    "directories": {
+      "buildResources": "build"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "build/icon.png",
+      "artifactName": "OrdaX-Gratis-${version}.exe",
+      "executableName": "OrdaX Gratis"
+    },
+    "compression": "normal",
+    "npmRebuild": false
+  }
+}

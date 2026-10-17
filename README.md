@@ -1,0 +1,105 @@
+# OrdaX Gratis 0.4.2
+
+Aplicativo desktop Windows independente que usa a sessão normal do ChatGPT Web dentro do próprio processo Electron, com Tasks locais duráveis e uma interface OrdaX própria.
+
+> Este repositório é separado do `ordax-gpt`. A meta atual é validar o produto isoladamente. Uma eventual integração futura poderá acontecer como app do OrdaX App, somente depois de os gates de qualidade, velocidade e confiabilidade passarem.
+
+## Experiência principal
+
+O usuário trabalha no **chat do OrdaX**. O ChatGPT Web fica oculto por padrão e funciona como worker autenticado.
+
+```text
+Usuário
+  ↓
+UI OrdaX
+  ↓
+Task / Run / SQLite
+  ↓
+ChatGPT Web oculto
+  ├─ Fast observer experimental (rede recebida pelo próprio WebContents)
+  └─ Beta observer estável (MutationObserver/DOM)
+  ↓
+stream de texto / imagens
+  ↓
+UI OrdaX
+```
+
+A interface original do ChatGPT só aparece quando o usuário escolhe **Modo direto** ou durante autenticação/verificação oficial que precise de interação humana.
+
+## Modos de resposta
+
+- **Automático**: tenta usar Fast quando disponível e mantém Beta como safety net da mesma geração.
+- **Fast experimental**: prioriza a observação incremental da resposta recebida pelo próprio WebContents.
+- **Beta estável**: observa incrementalmente a resposta renderizada no DOM do ChatGPT.
+
+Fast e Beta não são dois chats separados e não reenviam automaticamente a mesma pergunta. Eles observam a mesma sessão e a mesma geração.
+
+## Estado durável
+
+Dados canônicos:
+
+`%LOCALAPPDATA%\OrdaX\Gratis\data\ordax-gratis.sqlite`
+
+Assets:
+
+`%LOCALAPPDATA%\OrdaX\Gratis\data\assets\...`
+
+A Task local é o SSOT. Conversa/URL do ChatGPT é apenas um recurso de execução. O app persiste Tasks, mensagens, Runs, eventos, checkpoints, métricas, approvals/actions e imagens locais.
+
+Runs deixados como `running` após encerramento inesperado são reconciliados no boot como `interrupted` e permanecem resumíveis.
+
+## Login e segurança
+
+- login oficial ChatGPT/Google dentro do Electron;
+- sessão persistente `persist:ordax-gratis-chatgpt`;
+- sem importação/exportação de cookies do navegador;
+- sem extensão Chrome/Edge;
+- sem automação de navegador externo;
+- sem OpenAI API para executar as conversas;
+- sem chamada direta do app a endpoint privado do ChatGPT para enviar prompts;
+- sem bypass de CAPTCHA, Turnstile, fingerprint ou anti-bot;
+- renderer e worker com `contextIsolation: true`, `sandbox: true`, `nodeIntegration: false`;
+- navegação do worker restrita a ChatGPT/OpenAI Auth/Google;
+- assets locais expostos apenas via `ordax-asset://`.
+
+## Qualidade e performance
+
+O repo mede cada Run com timestamps persistidos para:
+
+- preparação;
+- tentativa e confirmação de submit;
+- request observada;
+- primeiro byte de rede;
+- primeiro delta Fast;
+- primeiro delta Beta;
+- TTFS/TTFV;
+- tempo total.
+
+Os E2E de aceitação operam **somente pela UI do OrdaX** (`desktop/ui.html`). Manipulação direta do ChatGPT é permitida apenas para diagnóstico interno.
+
+## Scripts
+
+- `npm run validate` — check + testes locais.
+- `npm run test:live:text` — E2E real de texto pela UI OrdaX.
+- `npm run test:live:image` — E2E real de imagem pela UI OrdaX.
+- `npm run test:live:restart` — valida persistência/reabertura pela UI OrdaX.
+- `npm run benchmark` — lê as métricas recentes persistidas.
+- `npm run build:win` — gera executável portátil Windows x64.
+
+Os testes live requerem o app iniciado com `ORDAX_DESKTOP_DEBUG=1`.
+
+## Gates comprovados nesta linha
+
+- ChatGPT oculto por padrão;
+- Modo direto explícito;
+- sessão persistente autenticada;
+- streaming incremental para a UI OrdaX;
+- Fast e Beta funcionando separadamente;
+- seleção de composer resiliente a layouts responsivos duplicados;
+- worker oculto mantém viewport real de desktop;
+- envio sem delay fixo de 1,8 s;
+- imagem gerada pela UI OrdaX, persistida e renderizada localmente;
+- imagem/Task sobrevivendo a restart;
+- 10/10 testes locais verdes após as correções atuais.
+
+Veja `docs/BENCHMARK.md` para medições e `REFERENCIAS.md` para os projetos estudados.
