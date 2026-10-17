@@ -190,3 +190,35 @@ Artefato final:
 - SHA-256: `1D7A557BBCD2304B89F4C1BE15446BA0766E6D2FDCF3E451FCC25FE6DC05C7B0`.
 
 Smoke do pacote aprovado: o executavel portatil foi iniciado com debug habilitado e carregou a pagina `OrdaX Gratis` diretamente de `resources/app.asar/desktop/ui.html`, confirmando que o pacote final inicia com o runtime empacotado, e nao apenas a arvore de fonte.
+
+## Candidate 0.4.4 — UI, conteúdo e continuidade entre conversas
+
+Validação executada em 2026-10-17 sobre a UI OrdaX 0.4.4.
+
+### UI responsiva
+
+A aplicação passou a usar três áreas sem alterar o worker oculto: conversas/Tasks à esquerda, chat canônico no centro e contexto/conteúdo à direita. Medições via Chromium:
+
+- 1500 px: 292 px / 878 px / 330 px — três colunas;
+- 1100 px: 260 px / 840 px — contexto recolhido;
+- 780 px: 220 px / 560 px — duas colunas;
+- 560 px: navegação compacta de 76 px + chat de 484 px.
+
+O composer permaneceu dentro da largura útil em todos os breakpoints medidos.
+
+### Continuidade real
+
+Gate `npm run test:live:continuity` aprovado com duas conversas distintas do ChatGPT para a mesma Task local:
+
+- conversa 1 armazenou uma palavra-chave única e produziu checkpoint v1;
+- `Nova conversa interna` arquivou a primeira URL sem encerrar a Task;
+- conversa 2 abriu uma URL diferente;
+- o OrdaX injetou contexto determinístico derivado do checkpoint e histórico local;
+- a segunda conversa recuperou corretamente a palavra-chave definida apenas na primeira;
+- resultado persistido: `conversation_count=2`, primeira conversa arquivada, segunda ativa e `context_checkpoint_version=1`.
+
+Este gate prova continuidade local mínima. Ainda não representa memória semântica especializada de livro; capítulos, personagens, fatos, fontes e decisões estruturadas ficam para uma camada posterior.
+
+### Conteúdo
+
+O gate de imagem 0.4.4 também passou. O asset 1254×1254 apareceu simultaneamente no histórico central e na galeria `Conteúdo` da terceira coluna, usando o mesmo `ordax-asset://` persistido localmente.

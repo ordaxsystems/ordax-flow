@@ -95,3 +95,33 @@ test('observer mode is persisted and fast path never replaces durable Task state
   assert.match(worker, /internal_tool_payload/);
   assert.match(ui, /observerMode/);
 });
+
+test('OrdaX UI exposes responsive conversation, chat and context columns', () => {
+  const html = fs.readFileSync(path.join(root,'desktop','ui.html'),'utf8');
+  const css = fs.readFileSync(path.join(root,'desktop','ui.css'),'utf8');
+  assert.match(html, /left-rail/);
+  assert.match(html, /chat-column/);
+  assert.match(html, /context-rail/);
+  assert.match(html, /contentAssets/);
+  assert.match(html, /memorySummary/);
+  assert.match(html, /conversationTimeline/);
+  assert.match(html, /toggleContext/);
+  assert.match(html, /closeContext/);
+  assert.match(ui, /setContextOpen/);
+  assert.match(css, /grid-template-columns:292px minmax\(460px,1fr\) 330px/);
+  assert.match(css, /\.context-rail\.open/);
+  assert.match(css, /@media \(max-width:1180px\)/);
+  assert.match(css, /@media \(max-width:620px\)/);
+});
+
+test('persistent Task memory can rotate provider conversations without losing the project', () => {
+  const store = fs.readFileSync(path.join(root,'src','store.mjs'),'utf8');
+  assert.match(store, /task_conversations/);
+  assert.match(store, /rotateConversation/);
+  assert.match(store, /buildContinuationPrompt/);
+  assert.match(store, /continuationSummary/);
+  assert.match(main, /needsContinuation/);
+  assert.match(main, /providerPrompt/);
+  assert.match(preload, /rotateConversation/);
+  assert.match(ui, /Nova conversa interna/);
+});

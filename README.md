@@ -1,4 +1,4 @@
-# OrdaX Gratis 0.4.3
+# OrdaX Gratis 0.4.4
 
 Aplicativo desktop Windows independente que usa a sessão normal do ChatGPT Web dentro do próprio processo Electron, com Tasks locais duráveis e uma interface OrdaX própria.
 
@@ -44,9 +44,22 @@ Assets:
 
 `%LOCALAPPDATA%\OrdaX\Gratis\data\assets\...`
 
-A Task local é o SSOT. Conversa/URL do ChatGPT é apenas um recurso de execução. O app persiste Tasks, mensagens, Runs, eventos, checkpoints, métricas, approvals/actions e imagens locais.
+A Task local é o SSOT. Uma Task pode atravessar várias conversas internas do ChatGPT: cada URL/chat é somente um segmento de execução. O app persiste Tasks, mensagens, Runs, eventos, checkpoints, métricas, approvals/actions, imagens locais e o histórico de conversas internas.
 
 Runs deixados como `running` após encerramento inesperado são reconciliados no boot como `interrupted` e permanecem resumíveis.
+
+## Continuidade e memória
+
+A versão 0.4.4 separa explicitamente **tarefa/projeto** de **conversa do provider**. Isso permite trabalhos longos, como um livro, continuarem mesmo quando uma conversa do ChatGPT é encerrada ou precisa ser renovada.
+
+- a coluna esquerda representa Tasks/conversas persistentes do OrdaX;
+- o chat central mostra o histórico canônico da Task;
+- a coluna direita mostra memória, artefatos e segmentos internos do ChatGPT;
+- **Nova conversa interna** arquiva o chat atual, mas não encerra a Task;
+- na próxima mensagem, o OrdaX abre um novo chat e injeta contexto de continuidade construído do checkpoint e das mensagens/artefatos recentes;
+- o contexto enviado ao novo chat é derivado do estado local, não da memória implícita do ChatGPT.
+
+Esta é a base mínima. Memória semântica especializada (por exemplo capítulos, personagens, fatos, fontes e decisões de um livro) fica para camadas posteriores sem trocar o modelo de persistência.
 
 ## Login e segurança
 
@@ -82,6 +95,7 @@ Os E2E de aceitação operam **somente pela UI do OrdaX** (`desktop/ui.html`). M
 - `npm run validate` — check + testes locais.
 - `npm run test:live:text` — E2E real de texto pela UI OrdaX.
 - `npm run test:live:image` — E2E real de imagem pela UI OrdaX.
+- `npm run test:live:continuity` — prova continuidade entre duas conversas internas diferentes usando memória local da mesma Task.
 - `npm run test:live:restart` — valida persistência/reabertura pela UI OrdaX.
 - `npm run benchmark` — lê as métricas recentes persistidas.
 - `npm run benchmark:live` — executa várias amostras pela UI e calcula min/média/p50/p95/p99.
@@ -105,6 +119,6 @@ Os testes live requerem o app iniciado com `ORDAX_DESKTOP_DEBUG=1`.
 - envio sem delay fixo de 1,8 s;
 - imagem gerada pela UI OrdaX, persistida e renderizada localmente;
 - imagem/Task sobrevivendo a restart;
-- 11/11 testes locais verdes após as correções atuais.
+- testes locais de contrato e persistência verdes, incluindo rotação de conversa com contexto de continuidade.
 
 Veja `docs/BENCHMARK.md` para medições e `REFERENCIAS.md` para os projetos estudados.

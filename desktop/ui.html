@@ -7,67 +7,135 @@
   <link rel="stylesheet" href="./ui.css" />
 </head>
 <body>
-  <main class="sidebar">
-    <header class="brand-row">
-      <div class="logo">O</div>
-      <div>
-        <h1>OrdaX Gratis</h1>
-        <p>ChatGPT Web dentro do app</p>
-      </div>
-    </header>
-
-    <section class="provider-card">
-      <div>
-        <strong id="providerText">Inicializando…</strong>
-        <small id="providerDetail">Sessão persistente própria</small>
-      </div>
-      <span id="providerDot" class="dot"></span>
-    </section>
-
-    <div class="toolbar">
-      <button id="newTask" class="primary">+ Nova tarefa</button>
-      <button id="login" class="secondary">Entrar com Google</button>
-      <button id="directMode" class="secondary">Modo direto</button>
-    </div>
-    <div class="observer-row">
-      <label for="observerMode">Resposta</label>
-      <select id="observerMode">
-        <option value="auto">Automático</option>
-        <option value="fast">Fast experimental</option>
-        <option value="beta">Beta estável</option>
-      </select>
-      <span id="observerHint">Fast quando disponível, Beta como safety net.</span>
-    </div>
-
-    <section class="tasks-wrap">
-      <div class="section-title">Tarefas</div>
-      <div id="tasks" class="tasks"></div>
-    </section>
-
-    <section id="taskPanel" class="task-panel hidden">
-      <div class="task-head">
-        <div>
-          <h2 id="taskTitle"></h2>
-          <p id="taskCheckpoint"></p>
+  <main class="app-shell">
+    <aside class="left-rail">
+      <header class="brand-row">
+        <div class="logo">O</div>
+        <div class="brand-copy">
+          <h1>OrdaX</h1>
+          <p>Gratis • memória local</p>
         </div>
+      </header>
+
+      <button id="newTask" class="primary new-task">+ Nova conversa</button>
+
+      <div class="search-wrap">
+        <span aria-hidden="true">⌕</span>
+        <input id="taskSearch" type="search" placeholder="Buscar conversas" autocomplete="off" />
       </div>
-      <div id="recoveryBanner" class="recovery hidden"></div>
-      <div id="messages" class="messages"></div>
-      <form id="composer" class="composer">
-        <textarea id="prompt" rows="3" placeholder="Escreva para o ChatGPT…"></textarea>
-        <button id="send" class="primary" type="submit">Enviar</button>
-        <div id="runStatus" class="run-status hidden"></div>
-      </form>
-      <div class="task-meta">
-        <span id="taskId"></span>
-        <span id="workspaceId"></span>
-      </div>
+
+      <section class="tasks-wrap">
+        <div class="section-title-row">
+          <span>Conversas</span>
+          <small id="taskCount">0</small>
+        </div>
+        <div id="tasks" class="tasks"></div>
+      </section>
+
+      <footer class="left-footer">
+        <section class="provider-card">
+          <div class="provider-main">
+            <span id="providerDot" class="dot"></span>
+            <div>
+              <strong id="providerText">Inicializando…</strong>
+              <small id="providerDetail">Sessão persistente própria</small>
+            </div>
+          </div>
+        </section>
+        <div class="footer-actions">
+          <button id="login" class="icon-button">Entrar</button>
+          <button id="directMode" class="icon-button">Modo direto</button>
+        </div>
+        <div class="observer-row">
+          <label for="observerMode">Resposta</label>
+          <select id="observerMode">
+            <option value="auto">Automático</option>
+            <option value="fast">Fast</option>
+            <option value="beta">Beta</option>
+          </select>
+          <span id="observerHint">Fast quando disponível.</span>
+        </div>
+      </footer>
+    </aside>
+
+    <section class="chat-column">
+      <section id="taskPanel" class="task-panel hidden">
+        <header class="task-head">
+          <div class="task-identity">
+            <div class="task-avatar">✦</div>
+            <div>
+              <h2 id="taskTitle"></h2>
+              <p id="taskCheckpoint"></p>
+            </div>
+          </div>
+          <div class="task-head-actions">
+            <button id="toggleContext" class="ghost-button context-toggle" type="button" aria-controls="contextRail" aria-expanded="false">Contexto</button>
+            <span id="conversationBadge" class="badge">1 conversa</span>
+            <button id="rotateConversation" class="ghost-button" type="button" title="Abre uma nova conversa interna mantendo a memória da tarefa">Nova conversa interna</button>
+          </div>
+        </header>
+        <div id="recoveryBanner" class="recovery hidden"></div>
+        <div id="messages" class="messages"></div>
+        <div class="composer-wrap">
+          <form id="composer" class="composer">
+            <textarea id="prompt" rows="1" placeholder="Pergunte, crie ou continue o trabalho…"></textarea>
+            <button id="send" class="send-button" type="submit" aria-label="Enviar">↑</button>
+            <div id="runStatus" class="run-status hidden"></div>
+          </form>
+          <div class="composer-hint">Enter envia • Shift+Enter quebra linha • a memória da tarefa é local</div>
+        </div>
+        <div class="task-meta">
+          <span id="taskId"></span>
+          <span id="workspaceId"></span>
+        </div>
+      </section>
+
+      <section id="empty" class="empty">
+        <div class="empty-mark">O</div>
+        <h2>Comece uma conversa que pode continuar amanhã.</h2>
+        <p>O OrdaX mantém mensagens, checkpoints, imagens e contexto da tarefa localmente. Uma nova conversa interna pode continuar o mesmo livro, pesquisa ou projeto sem começar do zero.</p>
+        <button class="primary empty-create" type="button" data-create-task>Nova conversa</button>
+      </section>
     </section>
 
-    <section id="empty" class="empty">
-      <h2>Seu ChatGPT, dentro do OrdaX</h2>
-      <p>Entre uma vez, crie uma tarefa e use texto ou imagens. O estado fica no OrdaX, não depende da memória da conversa.</p>
-    </section>
+    <aside id="contextRail" class="context-rail">
+      <header class="context-head">
+        <div>
+          <span class="eyebrow">Contexto</span>
+          <h3>Memória da tarefa</h3>
+        </div>
+        <div class="context-head-actions">
+          <span class="memory-dot" title="Persistido localmente"></span>
+          <button id="closeContext" class="context-close" type="button" aria-label="Fechar contexto">×</button>
+        </div>
+      </header>
+
+      <section class="context-card memory-card">
+        <div class="card-title">Continuidade</div>
+        <p id="memorySummary">Abra uma conversa para ver o contexto persistido.</p>
+        <div id="memoryStats" class="memory-stats"></div>
+      </section>
+
+      <section class="context-section">
+        <div class="section-title-row">
+          <span>Conteúdo</span>
+          <small id="assetCount">0</small>
+        </div>
+        <div id="contentAssets" class="content-assets">
+          <div class="context-empty">Imagens e outros artefatos aparecerão aqui.</div>
+        </div>
+      </section>
+
+      <section class="context-section conversations-section">
+        <div class="section-title-row">
+          <span>Conversas internas</span>
+          <small id="internalConversationCount">0</small>
+        </div>
+        <div id="conversationTimeline" class="conversation-timeline">
+          <div class="context-empty">A primeira conversa será registrada ao enviar uma mensagem.</div>
+        </div>
+      </section>
+    </aside>
   </main>
   <script type="module" src="./ui.js"></script>
 </body>

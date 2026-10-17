@@ -108,3 +108,40 @@ test('WAL mode is stable across reopen without reconfiguring an existing databas
   assert.equal(String(store.db.prepare('PRAGMA journal_mode').get().journal_mode).toLowerCase(), 'wal');
   assert.equal(store.listTasks().length, 1);
 });
+
+test('Task memory survives provider conversation rotation and seeds the next chat', t => {
+  const { dir, dbPath } = tempStore();
+  const store = new Store(dbPath);
+  cleanup(t, dir, () => store);
+  const task = store.createTask('Livro - Horizonte');
+  store.appendMessage(task.id, 'user', 'O protagonista se chama Caio.');
+  store.appendMessage(task.id, 'assistant', 'Definimos Caio como protagonista e a abertura no litoral.');
+  store.checkpoint(task.id, 'Caio é o protagonista; abertura no litoral.', { project: 'book' });
+  store.setChatUrl(task.id, 'https://chatgpt.com/c/part-1');
+
+  let current = store.getTask(task.id);
+  assert.equal(current.conversations.length, 1);
+  assert.equal(current.conversations[0].status, 'active');
+  assert.equal(store.listTasks()[0].conversation_count, 1);
+
+  current = store.rotateConversation(task.id, 'test_limit');
+  assert.equal(current.chat_url, null);
+  assert.equal(current.conversations[0].status, 'archived');
+
+  const prompt = store.buildContinuationPrompt(task.id, 'Continue escrevendo o capítulo 2.');
+  assert.match(prompt, /Livro - Horizonte/);
+  assert.match(prompt, /Caio é o protagonista/);
+  assert.match(prompt, /O protagonista se chama Caio/);
+  assert.match(prompt, /Continue escrevendo o capítulo 2/);
+
+  store.setChatUrl(task.id, 'https://chatgpt.com/c/part-2', 1);
+  current = store.getTask(task.id);
+  assert.equal(current.conversations.length, 2);
+  assert.equal(current.conversations[0].sequence, 2);
+  assert.equal(current.conversations[0].status, 'active');
+  assert.equal(current.conversations[0].context_checkpoint_version, 1);
+  assert.equal(current.continuation.conversation_count, 2);
+  const capsule = store.buildResumeCapsule(task.id);
+  assert.equal(capsule.version, 2);
+  assert.equal(capsule.conversations.length, 2);
+});

@@ -51,6 +51,10 @@ function composerExpression() {
   })()`;
 }
 
+function normalizeComposerText(value) {
+  return String(value || '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
 function cleanBodyCandidate(raw) {
   const noise = [
     /^\d+(?:\.\d+)?\s+(?:Medium|High|Low)$/i,
@@ -480,7 +484,7 @@ export class EmbeddedChatWorker {
     let recognized = false;
     for (let i = 0; i < 50; i++) {
       const state = await this.#composerState().catch(() => ({ found:false, text:'' }));
-      if (state.text.trim() === prompt.trim()) { recognized = true; break; }
+      if (normalizeComposerText(state.text) === normalizeComposerText(prompt)) { recognized = true; break; }
       await sleep(80);
     }
     if (!recognized) throw new Error('composer_input_not_recognized');

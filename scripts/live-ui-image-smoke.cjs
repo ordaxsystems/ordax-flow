@@ -18,12 +18,12 @@ const getJson=url=>new Promise((resolve,reject)=>http.get(url,r=>{let d='';r.on(
   await ev(`(()=>{const p=document.querySelector('#prompt');p.value=${JSON.stringify(prompt)};p.dispatchEvent(new Event('input',{bubbles:true}));document.querySelector('#composer').requestSubmit();return true})()`);
   let firstActivityAt=null, firstPreviewAt=null, completedAt=null, image=null, lastStatus='';
   for(let i=0;i<2400;i++){
-    const state=await ev(`(()=>({send:document.querySelector('#send')?.textContent||'',run:document.querySelector('#runStatus')?.textContent||'',live:document.querySelector('.message.live .live-content')?.textContent||'',images:[...document.querySelectorAll('#messages img')].map(img=>({src:img.getAttribute('src')||'',alt:img.alt||'',complete:img.complete,width:img.naturalWidth||0,height:img.naturalHeight||0})),messages:[...document.querySelectorAll('#messages .message')].slice(-3).map(n=>n.innerText)}))()`);
+    const state=await ev(`(()=>({send:document.querySelector('#send')?.textContent||'',sendDisabled:Boolean(document.querySelector('#send')?.disabled),run:document.querySelector('#runStatus')?.textContent||'',live:document.querySelector('.message.live .live-content')?.textContent||'',images:[...document.querySelectorAll('#messages img')].map(img=>({src:img.getAttribute('src')||'',alt:img.alt||'',complete:img.complete,width:img.naturalWidth||0,height:img.naturalHeight||0})),messages:[...document.querySelectorAll('#messages .message')].slice(-3).map(n=>n.innerText)}))()`);
     if(!firstActivityAt && (state.run||state.live)) firstActivityAt=Date.now();
     if(state.run!==lastStatus) lastStatus=state.run;
     const persisted=state.images.find(x=>x.src.startsWith('ordax-asset://'));
     if(persisted&&persisted.complete&&persisted.width>0&&persisted.height>0){image=persisted;if(!firstPreviewAt)firstPreviewAt=Date.now();}
-    if(image&&state.send==='Enviar'&&!state.live){completedAt=Date.now();break;}
+    if(image&&!state.sendDisabled&&!state.live){completedAt=Date.now();break;}
     await new Promise(r=>setTimeout(r,100));
   }
   const result={target:target.title,first_activity_ms:firstActivityAt?firstActivityAt-started:null,image_visible_ms:firstPreviewAt?firstPreviewAt-started:null,total_ms:completedAt?completedAt-started:null,image,lastStatus,passed:Boolean(image&&image.src.startsWith('ordax-asset://')&&image.width>0&&image.height>0)};

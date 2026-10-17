@@ -1,6 +1,6 @@
 {
   "name": "ordax-gratis",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "private": true,
   "type": "module",
   "main": "desktop/main.mjs",
@@ -8,7 +8,7 @@
   "author": "OrdaX Systems",
   "scripts": {
     "start": "electron .",
-    "check": "node --check desktop/main.mjs && node --check desktop/embedded-worker.mjs && node --check desktop/ui.js && node --check src/store.mjs && node --check scripts/e2e-lock.cjs && node --check scripts/live-ui-text-smoke.cjs && node --check scripts/live-ui-stream-smoke.cjs && node --check scripts/live-ui-image-smoke.cjs && node --check scripts/live-ui-restart-smoke.cjs && node --check scripts/set-observer-mode.cjs && node --check scripts/benchmark-suite.cjs",
+    "check": "node --check desktop/main.mjs && node --check desktop/embedded-worker.mjs && node --check desktop/ui.js && node --check src/store.mjs && node --check scripts/e2e-lock.cjs && node --check scripts/live-ui-text-smoke.cjs && node --check scripts/live-ui-stream-smoke.cjs && node --check scripts/live-ui-image-smoke.cjs && node --check scripts/live-ui-continuity-smoke.cjs && node --check scripts/live-ui-restart-smoke.cjs && node --check scripts/set-observer-mode.cjs && node --check scripts/benchmark-suite.cjs",
     "test": "node --test test/*.test.mjs",
     "validate": "npm run check && npm test",
     "test:live:text": "node scripts/live-ui-text-smoke.cjs",
@@ -17,7 +17,8 @@
     "benchmark": "node scripts/read-benchmark.cjs",
     "build:win": "electron-builder --win portable",
     "benchmark:live": "node scripts/benchmark-suite.cjs",
-    "test:live:stream": "node scripts/live-ui-stream-smoke.cjs"
+    "test:live:stream": "node scripts/live-ui-stream-smoke.cjs",
+    "test:live:continuity": "node scripts/live-ui-continuity-smoke.cjs"
   },
   "devDependencies": {
     "electron": "^44.8.0",

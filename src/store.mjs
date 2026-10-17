@@ -101,6 +101,19 @@ export class Store {
         created_at TEXT NOT NULL,
         UNIQUE(task_id, version)
       );
+      CREATE TABLE IF NOT EXISTS task_conversations (
+        id TEXT PRIMARY KEY,
+        task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+        sequence INTEGER NOT NULL,
+        chat_url TEXT,
+        status TEXT NOT NULL DEFAULT 'active',
+        context_checkpoint_version INTEGER,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        ended_at TEXT,
+        UNIQUE(task_id, sequence)
+      );
+      CREATE INDEX IF NOT EXISTS idx_task_conversations_task ON task_conversations(task_id, sequence);
       CREATE TABLE IF NOT EXISTS action_ledger (
         id TEXT PRIMARY KEY,
         task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
@@ -134,6 +147,7 @@ export class Store {
     this.db.prepare("UPDATE tasks SET workspace_session_id=? WHERE workspace_session_id IS NULL OR workspace_session_id=''")
       .run(this.workspaceSession.id);
     this.backfillLegacyCheckpoints();
+    this.backfillLegacyConversations();
   }
 
   now() { return new Date().toISOString(); }
@@ -151,6 +165,15 @@ export class Store {
       this.db.prepare('INSERT INTO checkpoints(id,task_id,version,event_seq,summary,payload,created_at) VALUES(?,?,?,?,?,?,?)')
         .run(checkpointId, row.id, 1, eventSeq, row.checkpoint, JSON.stringify({ migrated_from_legacy: true }), row.updated_at || this.now());
       this.event(row.id, 'task.checkpoint.migrated', { checkpoint_id: checkpointId, version: 1, event_seq: eventSeq });
+    }
+    return rows.length;
+  }
+
+  backfillLegacyConversations() {
+    const rows = this.db.prepare(`SELECT id,chat_url,created_at,updated_at FROM tasks WHERE chat_url IS NOT NULL AND TRIM(chat_url) <> '' AND NOT EXISTS (SELECT 1 FROM task_conversations c WHERE c.task_id=tasks.id)`).all();
+    for (const row of rows) {
+      this.db.prepare('INSERT INTO task_conversations(id,task_id,sequence,chat_url,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?)')
+        .run(`conversation_${randomUUID()}`, row.id, 1, row.chat_url, 'active', row.created_at || this.now(), row.updated_at || this.now());
     }
     return rows.length;
   }
@@ -200,7 +223,9 @@ export class Store {
     return this.getTask(id);
   }
 
-  listTasks() { return this.db.prepare('SELECT * FROM tasks ORDER BY updated_at DESC').all(); }
+  listTasks() {
+    return this.db.prepare(`SELECT t.*, (SELECT COUNT(*) FROM task_conversations c WHERE c.task_id=t.id) AS conversation_count FROM tasks t ORDER BY updated_at DESC`).all();
+  }
 
   getTask(id) {
     const task = this.db.prepare('SELECT * FROM tasks WHERE id=?').get(id);
@@ -210,7 +235,9 @@ export class Store {
       messages: this.messages(id),
       events: this.events(id, 100),
       checkpoint_record: this.latestCheckpoint(id),
-      pending_approvals: this.pendingApprovals(id)
+      pending_approvals: this.pendingApprovals(id),
+      conversations: this.listConversations(id),
+      continuation: this.continuationSummary(id)
     };
   }
 
@@ -259,9 +286,80 @@ export class Store {
 
   touch(id) { this.db.prepare('UPDATE tasks SET updated_at=? WHERE id=?').run(this.now(), id); }
 
-  setChatUrl(id, url) {
-    this.db.prepare('UPDATE tasks SET chat_url=?,updated_at=? WHERE id=?').run(url, this.now(), id);
-    this.event(id, 'provider.chat.bound', { url });
+  listConversations(taskId) {
+    return this.db.prepare('SELECT * FROM task_conversations WHERE task_id=? ORDER BY sequence DESC').all(taskId);
+  }
+
+  bindConversation(taskId, url, contextCheckpointVersion = null) {
+    const normalized = String(url || '').trim();
+    if (!normalized) return null;
+    const now = this.now();
+    const existing = this.db.prepare('SELECT * FROM task_conversations WHERE task_id=? AND chat_url=? ORDER BY sequence DESC LIMIT 1').get(taskId, normalized);
+    if (existing) {
+      this.db.prepare("UPDATE task_conversations SET status='archived',ended_at=COALESCE(ended_at,?),updated_at=? WHERE task_id=? AND id<>? AND status='active'").run(now, now, taskId, existing.id);
+      this.db.prepare("UPDATE task_conversations SET status='active',ended_at=NULL,updated_at=? WHERE id=?").run(now, existing.id);
+      this.db.prepare('UPDATE tasks SET chat_url=?,updated_at=? WHERE id=?').run(normalized, now, taskId);
+      return this.db.prepare('SELECT * FROM task_conversations WHERE id=?').get(existing.id);
+    }
+    this.db.prepare("UPDATE task_conversations SET status='archived',ended_at=?,updated_at=? WHERE task_id=? AND status='active'").run(now, now, taskId);
+    const sequence = Number(this.db.prepare('SELECT COALESCE(MAX(sequence),0)+1 AS sequence FROM task_conversations WHERE task_id=?').get(taskId)?.sequence || 1);
+    const id = `conversation_${randomUUID()}`;
+    this.db.prepare('INSERT INTO task_conversations(id,task_id,sequence,chat_url,status,context_checkpoint_version,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)')
+      .run(id, taskId, sequence, normalized, 'active', contextCheckpointVersion, now, now);
+    this.db.prepare('UPDATE tasks SET chat_url=?,updated_at=? WHERE id=?').run(normalized, now, taskId);
+    this.event(taskId, 'provider.conversation.bound', { conversation_id:id, sequence, url:normalized, context_checkpoint_version:contextCheckpointVersion });
+    return this.db.prepare('SELECT * FROM task_conversations WHERE id=?').get(id);
+  }
+
+  setChatUrl(id, url, contextCheckpointVersion = null) { return this.bindConversation(id, url, contextCheckpointVersion); }
+
+  rotateConversation(taskId, reason = 'manual') {
+    const now = this.now();
+    const active = this.db.prepare("SELECT * FROM task_conversations WHERE task_id=? AND status='active' ORDER BY sequence DESC LIMIT 1").get(taskId);
+    if (active) this.db.prepare("UPDATE task_conversations SET status='archived',ended_at=?,updated_at=? WHERE id=?").run(now, now, active.id);
+    this.db.prepare('UPDATE tasks SET chat_url=NULL,updated_at=? WHERE id=?').run(now, taskId);
+    this.event(taskId, 'provider.conversation.rotated', { reason, previous_conversation_id:active?.id || null, previous_chat_url:active?.chat_url || null });
+    return this.getTask(taskId);
+  }
+
+  continuationSummary(taskId) {
+    const task = this.db.prepare('SELECT id,title,checkpoint,chat_url FROM tasks WHERE id=?').get(taskId);
+    if (!task) return null;
+    const checkpoint = this.latestCheckpoint(taskId);
+    const recent = this.messages(taskId).slice(-10);
+    const conversations = this.listConversations(taskId);
+    return {
+      checkpoint_version: checkpoint?.version || 0,
+      checkpoint_summary: checkpoint?.summary || task.checkpoint || '',
+      recent_message_count: recent.length,
+      total_messages: Number(this.db.prepare('SELECT COUNT(*) AS n FROM messages WHERE task_id=?').get(taskId)?.n || 0),
+      conversation_count: conversations.length,
+      active_conversation: conversations.find(row => row.status === 'active') || null
+    };
+  }
+
+  buildContinuationPrompt(taskId, prompt) {
+    const task = this.getTask(taskId);
+    if (!task) return String(prompt || '');
+    const recent = task.messages.slice(-12);
+    const checkpoint = task.checkpoint_record;
+    const lines = [
+      '[CONTEXTO ORDAX - CONTINUIDADE DE UMA TAREFA PERSISTENTE]',
+      `Tarefa/projeto: ${task.title}`,
+      `Checkpoint: ${checkpoint?.summary || task.checkpoint || 'Sem checkpoint ainda.'}`,
+      'Histórico recente preservado localmente:'
+    ];
+    for (const message of recent) {
+      const role = message.role === 'assistant' ? 'ASSISTENTE' : 'USUARIO';
+      const text = String(message.content || '').replace(/\s+/g,' ').trim();
+      if (text) lines.push(`${role}: ${text.slice(0,1800)}`);
+      for (const asset of message.assets || []) lines.push(`ARTEFATO: ${asset.kind} - ${asset.alt || asset.id}`);
+    }
+    lines.push('Instrução de continuidade: trate este contexto como memória da mesma tarefa. Preserve decisões, nomes, estrutura e trabalho já concluído. Não reinicie o projeto do zero.');
+    lines.push('[FIM DO CONTEXTO ORDAX]');
+    lines.push('Pedido atual:');
+    lines.push(String(prompt || '').trim());
+    return lines.join('\n').slice(-16000);
   }
 
   checkpoint(id, summary, payload = {}) {
@@ -413,7 +511,7 @@ export class Store {
     const task = this.getTask(taskId);
     if (!task) return null;
     return {
-      version: 1,
+      version: 2,
       workspace_session_id: task.workspace_session_id,
       task: { id: task.id, title: task.title, status: task.status, chat_url: task.chat_url },
       checkpoint: task.checkpoint_record,
@@ -421,7 +519,9 @@ export class Store {
         role, content, created_at, assets: (assets || []).map(({ id, kind, mime_type, alt }) => ({ id, kind, mime_type, alt }))
       })),
       recent_events: task.events.slice(-20),
-      pending_approvals: task.pending_approvals
+      pending_approvals: task.pending_approvals,
+      conversations: task.conversations,
+      continuation: task.continuation
     };
   }
 }

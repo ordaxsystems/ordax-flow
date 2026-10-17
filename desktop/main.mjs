@@ -141,6 +141,9 @@ async function runTask(taskId, prompt, { newSession = false } = {}) {
   const task = store.getTask(taskId);
   if (!task) throw new Error('task_not_found');
 
+  const needsContinuation = Boolean((newSession || !task.chat_url) && task.messages.length > 0);
+  const checkpointVersion = task.checkpoint_record?.version || 0;
+  const providerPrompt = needsContinuation ? store.buildContinuationPrompt(taskId, prompt) : prompt;
   const userMessage = store.appendMessage(taskId, 'user', prompt);
   const runId = store.startRun(taskId, 'electron-embedded-chatgpt', observerMode);
   liveRun = { taskId, runId, startedAt:Date.now(), firstDeltaAt:null };
@@ -148,8 +151,8 @@ async function runTask(taskId, prompt, { newSession = false } = {}) {
   const heartbeat = setInterval(() => store.heartbeatRun(taskId, runId), 5000);
 
   try {
-    const result = await worker.sendPrompt({ prompt, chatUrl: task.chat_url, newSession: newSession || !task.chat_url });
-    store.setChatUrl(taskId, result.chatUrl);
+    const result = await worker.sendPrompt({ prompt: providerPrompt, chatUrl: task.chat_url, newSession: newSession || !task.chat_url });
+    store.setChatUrl(taskId, result.chatUrl, needsContinuation ? checkpointVersion : null);
     const runMetrics = store.recordRunMetrics(taskId, runId, observerMode, { ...(result.metrics || {}), runStartedAt: liveRun?.startedAt || null });
     const assistant = store.appendMessage(taskId, 'assistant', result.text || '');
     const assets = persistImages(taskId, assistant.id, result.images || []);
@@ -246,6 +249,7 @@ ipcMain.handle('ordax:tasks:open', async (_event, id) => {
   return decorateTask(task);
 });
 ipcMain.handle('ordax:tasks:resume-capsule', (_event, id) => store.buildResumeCapsule(String(id)));
+ipcMain.handle('ordax:tasks:rotate-conversation', (_event, id) => decorateTask(store.rotateConversation(String(id), 'manual_ui')));
 ipcMain.handle('ordax:provider:status', async () => ({ ...(await worker.health()), observer_mode:observerMode, worker_preload:workerPreload }));
 ipcMain.handle('ordax:provider:observer-mode:get', () => observerMode);
 ipcMain.handle('ordax:provider:observer-mode:set', (_event, mode) => {
