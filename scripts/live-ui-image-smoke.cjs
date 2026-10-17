@@ -1,3 +1,5 @@
+const { acquireE2ELock } = require('./e2e-lock.cjs');
+acquireE2ELock('image-smoke');
 const http=require('http');
 const getJson=url=>new Promise((resolve,reject)=>http.get(url,r=>{let d='';r.on('data',c=>d+=c);r.on('end',()=>{try{resolve(JSON.parse(d))}catch(e){reject(e)}})}).on('error',reject));
 (async()=>{

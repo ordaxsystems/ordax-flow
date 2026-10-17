@@ -1,4 +1,4 @@
-# OrdaX Gratis 0.4.2
+# OrdaX Gratis 0.4.3
 
 Aplicativo desktop Windows independente que usa a sessão normal do ChatGPT Web dentro do próprio processo Electron, com Tasks locais duráveis e uma interface OrdaX própria.
 
@@ -84,6 +84,8 @@ Os E2E de aceitação operam **somente pela UI do OrdaX** (`desktop/ui.html`). M
 - `npm run test:live:image` — E2E real de imagem pela UI OrdaX.
 - `npm run test:live:restart` — valida persistência/reabertura pela UI OrdaX.
 - `npm run benchmark` — lê as métricas recentes persistidas.
+- `npm run benchmark:live` — executa várias amostras pela UI e calcula min/média/p50/p95/p99.
+- `npm run test:live:stream` — exige streaming incremental longo e monotônico.
 - `npm run build:win` — gera executável portátil Windows x64.
 
 Os testes live requerem o app iniciado com `ORDAX_DESKTOP_DEBUG=1`.
@@ -94,12 +96,15 @@ Os testes live requerem o app iniciado com `ORDAX_DESKTOP_DEBUG=1`.
 - Modo direto explícito;
 - sessão persistente autenticada;
 - streaming incremental para a UI OrdaX;
-- Fast e Beta funcionando separadamente;
-- seleção de composer resiliente a layouts responsivos duplicados;
+- Fast e Beta funcionando separadamente e arbitrados por quem entrega primeiro;
+- streaming monotônico: observer atrasado não reduz texto já mostrado;
+- fallback DOM restrito à conversa (`main`), sem espelhar sidebar/chrome do ChatGPT;
+- seleção de composer e Novo chat resiliente a layouts responsivos duplicados;
 - worker oculto mantém viewport real de desktop;
+- envio prioriza o botão visível e usa submit do form apenas como fallback;
 - envio sem delay fixo de 1,8 s;
 - imagem gerada pela UI OrdaX, persistida e renderizada localmente;
 - imagem/Task sobrevivendo a restart;
-- 10/10 testes locais verdes após as correções atuais.
+- 11/11 testes locais verdes após as correções atuais.
 
 Veja `docs/BENCHMARK.md` para medições e `REFERENCIAS.md` para os projetos estudados.

@@ -9,6 +9,8 @@ const worker = fs.readFileSync(path.join(root,'desktop','embedded-worker.mjs'),'
 const workerPreload = fs.readFileSync(path.join(root,'desktop','worker-preload.cjs'),'utf8');
 const preload = fs.readFileSync(path.join(root,'desktop','preload.cjs'),'utf8');
 const ui = fs.readFileSync(path.join(root,'desktop','ui.js'),'utf8');
+const e2eLock = fs.readFileSync(path.join(root,'scripts','e2e-lock.cjs'),'utf8');
+const liveText = fs.readFileSync(path.join(root,'scripts','live-ui-text-smoke.cjs'),'utf8');
 
 test('desktop package ships only canonical desktop runtime', () => {
   assert.equal(pkg.main, 'desktop/main.mjs');
@@ -23,6 +25,10 @@ test('desktop is single-instance with canonical durable AppData state', () => {
   assert.match(main, /OrdaX['"], ['"]Gratis/);
   assert.match(main, /recoverInterruptedRuns/);
   assert.match(main, /heartbeatRun/);
+  assert.match(main, /will-quit/);
+  assert.match(main, /store\.close\(\)/);
+  assert.match(main, /executionTail/);
+  assert.match(main, /enqueueExecution/);
 });
 
 test('embedded ChatGPT surface is sandboxed and navigation-scoped', () => {
@@ -46,10 +52,28 @@ test('ChatGPT worker is hidden by default and direct mode is explicit', () => {
 test('assistant output streams into OrdaX UI through isolated worker preload', () => {
   assert.match(worker, /worker-preload\.cjs/);
   assert.match(workerPreload, /MutationObserver/);
+  assert.match(workerPreload, /conversationRoot/);
+  assert.match(workerPreload, /main,\[role=\"main\"\]/);
   assert.match(workerPreload, /ordax:worker:stream/);
   assert.match(main, /ordax:task:stream/);
   assert.match(preload, /onTaskStream/);
   assert.match(ui, /updateLiveRun/);
+});
+
+test('current ChatGPT DOM identity binds each run to its own assistant message', () => {
+  assert.match(workerPreload, /data-chatgpt-selection-message-id/);
+  assert.match(workerPreload, /data-user-message-bubble/);
+  assert.match(workerPreload, /messageId/);
+  assert.match(worker, /seenAssistantMessageIds/);
+  assert.match(worker, /currentAssistantMessageId/);
+  assert.match(worker, /latestUserText/);
+});
+
+test('live E2E gates are exclusive and detect cross-run leaks', () => {
+  assert.match(e2eLock, /e2e\.lock/);
+  assert.match(e2eLock, /e2e_lock_busy/);
+  assert.match(liveText, /crossRunLeak/);
+  assert.match(liveText, /providerStatus/);
 });
 
 test('send readiness is state-driven without legacy 1800ms fixed delay', () => {
@@ -65,5 +89,9 @@ test('observer mode is persisted and fast path never replaces durable Task state
   assert.match(worker, /setObserverMode/);
   assert.match(worker, /Network\.enable/);
   assert.match(worker, /networkFirstByteAt/);
+  assert.match(worker, /firstObserver/);
+  assert.match(worker, /lastDeliveredText/);
+  assert.match(worker, /fastSuppressed/);
+  assert.match(worker, /internal_tool_payload/);
   assert.match(ui, /observerMode/);
 });

@@ -42,7 +42,8 @@ const store = new Store(path.join(dataRoot, 'ordax-gratis.sqlite'));
 const recoveredRunCount = store.recoverInterruptedRuns();
 store.updateWorkspaceMetadata({
   last_started_at: new Date().toISOString(),
-  recovered_runs_on_start: recoveredRunCount
+  recovered_runs_on_start: recoveredRunCount,
+  sqlite_open_retries: store.openRetryCount
 });
 
 function migrateExternalAssetPaths() {
@@ -81,7 +82,14 @@ let liveRun = null;
 const persistedObserverMode = store.getWorkspaceSession()?.metadata?.observer_mode;
 let observerMode = ['auto','fast','beta'].includes(persistedObserverMode) ? persistedObserverMode : 'auto';
 let workerPreload = { ready:false, url:null, at:null };
+let executionTail = Promise.resolve();
 const LEFT_WIDTH = 470;
+
+function enqueueExecution(operation) {
+  const next = executionTail.then(operation, operation);
+  executionTail = next.catch(() => {});
+  return next;
+}
 
 function assetUrl(id) {
   return `ordax-asset://local/${encodeURIComponent(id)}`;
@@ -260,7 +268,7 @@ ipcMain.handle('ordax:chat:visible', (_event, visible) => {
 ipcMain.handle('ordax:tasks:send', async (_event, { taskId, content, newSession = false }) => {
   const prompt = String(content || '').trim();
   if (!prompt) throw new Error('content_required');
-  return runTask(String(taskId), prompt, { newSession: Boolean(newSession) });
+  return enqueueExecution(() => runTask(String(taskId), prompt, { newSession: Boolean(newSession) }));
 });
 
 app.whenReady().then(async () => {
@@ -287,6 +295,10 @@ app.whenReady().then(async () => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
+});
+
+app.on('will-quit', () => {
+  store.close();
 });
 
 app.on('activate', () => {

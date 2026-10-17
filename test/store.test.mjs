@@ -10,9 +10,17 @@ function tempStore() {
   return { dir, dbPath: path.join(dir, 'state.sqlite') };
 }
 
-test('Task, workspace session and versioned checkpoint survive reopen', () => {
-  const { dbPath } = tempStore();
+function cleanup(t, dir, getStore) {
+  t.after(() => {
+    getStore()?.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+}
+
+test('Task, workspace session and versioned checkpoint survive reopen', t => {
+  const { dir, dbPath } = tempStore();
   let store = new Store(dbPath);
+  cleanup(t, dir, () => store);
   const sessionId = store.getWorkspaceSession().id;
   const task = store.createTask('Persistência real');
   store.appendMessage(task.id, 'user', 'ping');
@@ -20,6 +28,7 @@ test('Task, workspace session and versioned checkpoint survive reopen', () => {
   store.setChatUrl(task.id, 'https://chatgpt.com/c/example');
   store.checkpoint(task.id, 'safe point', { proof: 'ok' });
 
+  store.close();
   store = new Store(dbPath);
   const restored = store.getTask(task.id);
   assert.equal(store.getWorkspaceSession().id, sessionId);
@@ -30,14 +39,16 @@ test('Task, workspace session and versioned checkpoint survive reopen', () => {
   assert.deepEqual(restored.messages.map(m => [m.role, m.content]), [['user', 'ping'], ['assistant', 'pong']]);
 });
 
-test('Interrupted run is explicit and resumable after reopen', () => {
-  const { dbPath } = tempStore();
+test('Interrupted run is explicit and resumable after reopen', t => {
+  const { dir, dbPath } = tempStore();
   let store = new Store(dbPath);
+  cleanup(t, dir, () => store);
   const task = store.createTask('Crash recovery');
   store.checkpoint(task.id, 'before crash', { durable: true });
   const runId = store.startRun(task.id);
   assert.equal(store.getTask(task.id).status, 'running');
 
+  store.close();
   store = new Store(dbPath);
   assert.equal(store.getTask(task.id).status, 'running');
   const recovered = store.recoverInterruptedRuns();
@@ -54,9 +65,10 @@ test('Interrupted run is explicit and resumable after reopen', () => {
   assert.equal(capsule.task.status, 'interrupted');
 });
 
-test('Action and approval ledgers preserve deterministic side-effect state', () => {
-  const { dbPath } = tempStore();
+test('Action and approval ledgers preserve deterministic side-effect state', t => {
+  const { dir, dbPath } = tempStore();
   const store = new Store(dbPath);
+  cleanup(t, dir, () => store);
   const task = store.createTask('Ledger');
   const runId = store.startRun(task.id);
   const actionId = store.beginAction(task.id, runId, 'write_file', 'file:test.txt', { bytes: 3 });
@@ -73,4 +85,26 @@ test('Action and approval ledgers preserve deterministic side-effect state', () 
   assert.equal(approval.status, 'approved');
   assert.ok(approval.resolved_at);
   assert.equal(store.pendingApprovals(task.id).length, 0);
+});
+
+test('Store close is idempotent and releases SQLite files immediately', () => {
+  const { dir, dbPath } = tempStore();
+  const store = new Store(dbPath);
+  store.createTask('Close lifecycle');
+  store.close();
+  store.close();
+  fs.rmSync(dir, { recursive: true, force: true });
+  assert.equal(fs.existsSync(dir), false);
+});
+
+test('WAL mode is stable across reopen without reconfiguring an existing database', t => {
+  const { dir, dbPath } = tempStore();
+  let store = new Store(dbPath);
+  cleanup(t, dir, () => store);
+  assert.equal(String(store.db.prepare('PRAGMA journal_mode').get().journal_mode).toLowerCase(), 'wal');
+  store.createTask('WAL lifecycle');
+  store.close();
+  store = new Store(dbPath);
+  assert.equal(String(store.db.prepare('PRAGMA journal_mode').get().journal_mode).toLowerCase(), 'wal');
+  assert.equal(store.listTasks().length, 1);
 });

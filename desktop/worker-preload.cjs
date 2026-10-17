@@ -25,32 +25,43 @@ function readImages(root, minSize) {
 }
 
 function snapshot() {
-  const nodes = Array.from(document.querySelectorAll('[data-message-role="assistant"], [data-message-author-role="assistant"], [data-message-author="assistant"]'));
+  const nodes = Array.from(document.querySelectorAll('[data-message-role="assistant"], [data-message-author-role="assistant"], [data-message-author="assistant"], [data-chatgpt-selection-message-id]'));
   const node = nodes[nodes.length - 1] || null;
+  const userNodes = Array.from(document.querySelectorAll('[data-message-role="user"], [data-message-author-role="user"], [data-message-author="user"], [data-user-message-bubble="true"]'));
+  const latestUserText = String(userNodes.at(-1)?.innerText || userNodes.at(-1)?.textContent || '').trim();
   const generating = Boolean(document.querySelector('button[data-testid="stop-button"],button[aria-label*="Parar"],button[aria-label*="Stop"]'));
+  const generatedImages = readImages(document, 64).filter(image => {
+    const el = Array.from(document.querySelectorAll('[data-testid="generated-image-preview"] img')).find(img => (img.currentSrc || img.src || '') === image.src);
+    return Boolean(el);
+  });
 
   if (node) {
     const markdown = node.querySelector('[data-assistant-markdown], [data-message-content]');
+    const messageId = node.getAttribute('data-chatgpt-selection-message-id') || node.getAttribute('data-message-id') || '';
     return {
       mode: 'direct',
       assistantCount: nodes.length,
+      messageId,
+      latestUserText,
       text: cleanText((markdown && markdown.innerText) || node.innerText || ''),
       rawBody: '',
-      images: readImages(node, 64),
+      images: [...readImages(node, 64), ...generatedImages].filter((image,index,all) => all.findIndex(other => other.src === image.src) === index),
       generating,
-      complete: node.hasAttribute('data-message-complete') || Boolean(node.querySelector('[data-message-complete]')),
+      complete: !generating || node.hasAttribute('data-message-complete') || Boolean(node.querySelector('[data-message-complete]')),
       url: location.href,
       at: Date.now()
     };
   }
 
-  const body = (document.body && document.body.innerText) || '';
+  const conversationRoot = document.querySelector('main,[role="main"]');
+  const body = (conversationRoot && conversationRoot.innerText) || '';
   return {
     mode: 'body',
     assistantCount: 0,
+    latestUserText,
     text: '',
     rawBody: body.slice(-20000),
-    images: readImages(document, 128),
+    images: [...readImages(conversationRoot || document, 128), ...generatedImages].filter((image,index,all) => all.findIndex(other => other.src === image.src) === index),
     generating,
     complete: !generating,
     url: location.href,
@@ -65,6 +76,8 @@ function emit() {
     const signature = JSON.stringify([
       state.mode,
       state.assistantCount,
+      state.messageId || '',
+      state.latestUserText || '',
       state.text,
       state.rawBody.slice(-8000),
       state.images.map(image => image.src),

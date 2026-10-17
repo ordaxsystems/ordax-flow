@@ -3,14 +3,42 @@ import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import fs from 'node:fs';
 
+const SQLITE_OPEN_RETRY_DELAYS_MS = [0, 40, 80, 160, 320, 640, 1280];
+const sqliteOpenWait = new Int32Array(new SharedArrayBuffer(4));
+
+function isTransientSqliteOpenError(error) {
+  const message = String(error?.message || error || '');
+  return /disk I\/O error|database is locked|database is busy|SQLITE_(?:IOERR|BUSY|LOCKED)/i.test(message);
+}
+
+function openConfiguredDatabase(filePath) {
+  let lastError = null;
+  for (let attempt = 0; attempt < SQLITE_OPEN_RETRY_DELAYS_MS.length; attempt++) {
+    const delay = SQLITE_OPEN_RETRY_DELAYS_MS[attempt];
+    if (delay) Atomics.wait(sqliteOpenWait, 0, 0, delay);
+    let db = null;
+    try {
+      db = new DatabaseSync(filePath);
+      db.exec('PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON; PRAGMA synchronous=FULL;');
+      const journalMode = String(db.prepare('PRAGMA journal_mode').get()?.journal_mode || '').toLowerCase();
+      if (journalMode !== 'wal') db.prepare('PRAGMA journal_mode=WAL').get();
+      return { db, retryCount: attempt };
+    } catch (error) {
+      lastError = error;
+      try { db?.close(); } catch {}
+      if (!isTransientSqliteOpenError(error) || attempt === SQLITE_OPEN_RETRY_DELAYS_MS.length - 1) throw error;
+    }
+  }
+  throw lastError || new Error('sqlite_open_failed');
+}
+
 export class Store {
   constructor(filePath) {
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    this.db = new DatabaseSync(filePath);
+    const opened = openConfiguredDatabase(filePath);
+    this.db = opened.db;
+    this.openRetryCount = opened.retryCount;
     this.db.exec(`
-      PRAGMA journal_mode=WAL;
-      PRAGMA foreign_keys=ON;
-      PRAGMA synchronous=FULL;
       CREATE TABLE IF NOT EXISTS workspace_sessions (
         id TEXT PRIMARY KEY,
         status TEXT NOT NULL,
@@ -267,6 +295,12 @@ export class Store {
     const normalized = {
       observer_mode: observerMode,
       run_started_at: metrics?.runStartedAt || null,
+      prepare_started_at: metrics?.prepareStartedAt || null,
+      health_completed_at: metrics?.healthCompletedAt || null,
+      draft_checked_at: metrics?.draftCheckedAt || null,
+      conversation_ready_at: metrics?.conversationReadyAt || null,
+      observer_ready_at: metrics?.observerReadyAt || null,
+      baseline_ready_at: metrics?.baselineReadyAt || null,
       submit_attempt_at: metrics?.submitAttemptAt || null,
       provider_request_seen_at: metrics?.providerRequestSeenAt || null,
       submitted_at: metrics?.submittedAt || null,
@@ -275,17 +309,29 @@ export class Store {
       beta_first_delta_at: metrics?.betaFirstDeltaAt || null,
       network_first_byte_at: metrics?.networkFirstByteAt || null,
       completed_at: metrics?.completedAt || null,
-      ttfs_ms: metrics?.submittedAt && metrics?.firstDeltaAt ? Math.max(0, metrics.firstDeltaAt - metrics.submittedAt) : null,
+      ttfs_ms: metrics?.submitAttemptAt && metrics?.firstDeltaAt ? Math.max(0, metrics.firstDeltaAt - metrics.submitAttemptAt) : null,
       prepare_ms: metrics?.runStartedAt && metrics?.submitAttemptAt ? Math.max(0, metrics.submitAttemptAt - metrics.runStartedAt) : null,
+      health_ms: metrics?.prepareStartedAt && metrics?.healthCompletedAt ? Math.max(0, metrics.healthCompletedAt - metrics.prepareStartedAt) : null,
+      draft_check_ms: metrics?.healthCompletedAt && metrics?.draftCheckedAt ? Math.max(0, metrics.draftCheckedAt - metrics.healthCompletedAt) : null,
+      conversation_prepare_ms: metrics?.draftCheckedAt && metrics?.conversationReadyAt ? Math.max(0, metrics.conversationReadyAt - metrics.draftCheckedAt) : null,
+      observer_prepare_ms: metrics?.conversationReadyAt && metrics?.observerReadyAt ? Math.max(0, metrics.observerReadyAt - metrics.conversationReadyAt) : null,
+      baseline_prepare_ms: metrics?.observerReadyAt && metrics?.baselineReadyAt ? Math.max(0, metrics.baselineReadyAt - metrics.observerReadyAt) : null,
+      composer_prepare_ms: metrics?.baselineReadyAt && metrics?.submitAttemptAt ? Math.max(0, metrics.submitAttemptAt - metrics.baselineReadyAt) : null,
       request_seen_ms: metrics?.submitAttemptAt && metrics?.providerRequestSeenAt ? Math.max(0, metrics.providerRequestSeenAt - metrics.submitAttemptAt) : null,
       submit_confirm_ms: metrics?.submitAttemptAt && metrics?.submittedAt ? Math.max(0, metrics.submittedAt - metrics.submitAttemptAt) : null,
       network_ttfs_ms: metrics?.submitAttemptAt && metrics?.networkFirstByteAt ? Math.max(0, metrics.networkFirstByteAt - metrics.submitAttemptAt) : null,
       attempt_to_first_delta_ms: metrics?.submitAttemptAt && metrics?.firstDeltaAt ? Math.max(0, metrics.firstDeltaAt - metrics.submitAttemptAt) : null,
       fast_ttfs_ms: metrics?.submitAttemptAt && metrics?.fastFirstDeltaAt ? Math.max(0, metrics.fastFirstDeltaAt - metrics.submitAttemptAt) : null,
       beta_ttfs_ms: metrics?.submitAttemptAt && metrics?.betaFirstDeltaAt ? Math.max(0, metrics.betaFirstDeltaAt - metrics.submitAttemptAt) : null,
-      fast_lead_ms: metrics?.fastFirstDeltaAt && metrics?.betaFirstDeltaAt ? Math.max(0, metrics.betaFirstDeltaAt - metrics.fastFirstDeltaAt) : null,
+      fast_lead_ms: metrics?.fastFirstDeltaAt && metrics?.betaFirstDeltaAt ? metrics.betaFirstDeltaAt - metrics.fastFirstDeltaAt : null,
       total_ms: metrics?.submitAttemptAt && metrics?.completedAt ? Math.max(0, metrics.completedAt - metrics.submitAttemptAt) : null,
-      observer_used: metrics?.observerUsed || 'beta'
+      observer_used: metrics?.observerUsed || 'beta',
+      first_observer: metrics?.firstObserver || null,
+      fast_seen: Boolean(metrics?.fastSeen),
+      beta_seen: Boolean(metrics?.betaSeen),
+      fast_delivered: Boolean(metrics?.fastDelivered),
+      fast_suppressed: Boolean(metrics?.fastSuppressed),
+      fast_suppression_reason: metrics?.fastSuppressionReason || null
     };
     this.db.prepare('UPDATE runs SET observer_mode=?,metrics=? WHERE id=?').run(observerMode, JSON.stringify(normalized), runId);
     this.event(taskId, 'run.metrics', { run_id: runId, ...normalized });
@@ -354,6 +400,13 @@ export class Store {
 
   pendingApprovals(taskId) {
     return this.db.prepare("SELECT * FROM approval_ledger WHERE task_id=? AND status='pending' ORDER BY created_at,id").all(taskId);
+  }
+
+  close() {
+    if (!this.db) return;
+    const db = this.db;
+    this.db = null;
+    db.close();
   }
 
   buildResumeCapsule(taskId) {

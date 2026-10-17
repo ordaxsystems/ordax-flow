@@ -1,3 +1,5 @@
+const { acquireE2ELock } = require('./e2e-lock.cjs');
+acquireE2ELock('set-observer-mode');
 const http=require('http');
 const mode=String(process.argv[2]||'auto').toLowerCase();
 if(!['auto','fast','beta'].includes(mode))throw new Error('invalid_mode');
