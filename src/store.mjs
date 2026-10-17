@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import fs from 'node:fs';
 import { MemoryCandidateLedger } from './memory-candidates.mjs';
+import { canonicalProviderChatUrl } from './conversation-policy.mjs';
 import { buildProjectContinuation } from './continuation-context.mjs';
 
 const SQLITE_OPEN_RETRY_DELAYS_MS = [0, 40, 80, 160, 320, 640, 1280];
@@ -395,13 +396,18 @@ export class Store {
   }
 
   bindConversation(taskId, url, contextCheckpointVersion = null) {
-    const normalized = String(url || '').trim();
-    if (!normalized) return null;
+    const normalized = canonicalProviderChatUrl(url);
+    if (!normalized) {
+      if (!String(url || '').trim()) return null;
+      throw new Error('invalid_provider_conversation_url');
+    }
     const now = this.now();
-    const existing = this.db.prepare('SELECT * FROM task_conversations WHERE task_id=? AND chat_url=? ORDER BY sequence DESC LIMIT 1').get(taskId, normalized);
+    const exact = this.db.prepare('SELECT * FROM task_conversations WHERE task_id=? AND chat_url=? ORDER BY sequence DESC LIMIT 1').get(taskId, normalized);
+    const existing = exact || this.db.prepare('SELECT * FROM task_conversations WHERE task_id=? ORDER BY sequence DESC').all(taskId)
+      .find(row => canonicalProviderChatUrl(row.chat_url) === normalized);
     if (existing) {
       this.db.prepare("UPDATE task_conversations SET status='archived',ended_at=COALESCE(ended_at,?),updated_at=? WHERE task_id=? AND id<>? AND status='active'").run(now, now, taskId, existing.id);
-      this.db.prepare("UPDATE task_conversations SET status='active',ended_at=NULL,updated_at=? WHERE id=?").run(now, existing.id);
+      this.db.prepare("UPDATE task_conversations SET status='active',chat_url=?,ended_at=NULL,updated_at=? WHERE id=?").run(normalized, now, existing.id);
       this.db.prepare('UPDATE tasks SET chat_url=?,updated_at=? WHERE id=?').run(normalized, now, taskId);
       return this.db.prepare('SELECT * FROM task_conversations WHERE id=?').get(existing.id);
     }

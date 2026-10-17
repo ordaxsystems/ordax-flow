@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { randomUUID, createHash } from 'node:crypto';
 import { Store } from '../src/store.mjs';
-import { planProviderConversation, assessProviderRotation } from '../src/conversation-policy.mjs';
+import { planProviderConversation, assessProviderRotation, canonicalProviderChatUrl } from '../src/conversation-policy.mjs';
 import { EmbeddedChatWorker } from './embedded-worker.mjs';
 
 if (process.env.ORDAX_DESKTOP_DEBUG === '1') {
@@ -157,7 +157,19 @@ async function runTask(taskId, prompt, { newSession = false } = {}) {
   try {
     const result = await worker.sendPrompt({ prompt: providerPrompt, chatUrl: task.chat_url, newSession: conversationPlan.newSession });
     const rotationOutcome = assessProviderRotation(conversationPlan, task.chat_url, result.chatUrl);
-    const bound = store.setChatUrl(taskId, result.chatUrl, needsContinuation ? checkpointVersion : null);
+    const confirmedChatUrl = canonicalProviderChatUrl(result.chatUrl);
+    // An observed answer is still persisted, but a home/share/login URL must
+    // never become the durable conversation identifier. No automatic resend.
+    const bound = confirmedChatUrl
+      ? store.setChatUrl(taskId, confirmedChatUrl, needsContinuation ? checkpointVersion : null)
+      : null;
+    if (!confirmedChatUrl) {
+      store.rotateConversation(taskId, 'provider_url_unconfirmed');
+      store.event(taskId, 'provider.conversation.url_unconfirmed', {
+        reason: result.chatUrl ? 'not_a_chat_permalink' : 'missing_url',
+        previous_conversation_id: conversationPlan.previousConversationId
+      });
+    }
     if (conversationPlan.automaticRotation && rotationOutcome === 'rotated' && bound?.id !== conversationPlan.previousConversationId) {
       store.event(taskId, 'provider.conversation.auto_rotated', {
         reason:conversationPlan.reason,
@@ -185,13 +197,13 @@ async function runTask(taskId, prompt, { newSession = false } = {}) {
 
     store.checkpoint(taskId, `Última resposta observada em ${result.observedAt}: ${summary}`, {
       run_id: runId,
-      chat_url: result.chatUrl,
+      chat_url: confirmedChatUrl,
       asset_ids: assets.map(asset => asset.id),
       observer_mode: observerMode,
       run_metrics: runMetrics
     });
     store.finishRun(taskId, runId);
-    await worker.showConversation(result.chatUrl).catch(() => {});
+    if (confirmedChatUrl) await worker.showConversation(confirmedChatUrl).catch(() => {});
     return { result: { ...result, assets }, task: decorateTask(store.getTask(taskId)) };
   } catch (error) {
     store.finishRun(taskId, runId, String(error?.message || error));

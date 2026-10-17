@@ -150,6 +150,15 @@ test('a persistent project hides internal provider sessions and rotates only aft
   assert.match(fs.readFileSync(path.join(root,'src','store.mjs'),'utf8'), /conversation_completed_runs/);
 });
 
+test('provider chat identity is canonical and unconfirmed navigation never triggers resend', () => {
+  const source = fs.readFileSync(path.join(root,'src','conversation-policy.mjs'),'utf8');
+  assert.match(source, /canonicalProviderChatUrl/);
+  assert.match(main, /canonicalProviderChatUrl\(result\.chatUrl\)/);
+  assert.match(main, /provider\.conversation\.url_unconfirmed/);
+  assert.match(main, /provider_url_unconfirmed/);
+  assert.doesNotMatch(main, /provider_url:\s*String\(result\.chatUrl/);
+});
+
 test('project memory suggestions are review-only and isolated from canon', () => {
   const schema = fs.readFileSync(path.join(root,'src','memory-candidates.mjs'),'utf8');
   const detector = fs.readFileSync(path.join(root,'src','memory-suggestions.mjs'),'utf8');

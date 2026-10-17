@@ -381,3 +381,56 @@ test('automatic provider rotation counts only completed runs and is restart-safe
   assert.equal(project.conversations[1].status,'archived');
   assert.equal(project.conversations[0].status,'active');
 });
+
+test('provider conversation links are canonical: URL params cannot create false chat segments', t => {
+  const { dir, dbPath }=tempStore();
+  let store=new Store(dbPath);
+  cleanup(t,dir,()=>store);
+  const task=store.createTask('Projeto contínuo - identidade de conversa');
+  const base='https://chatgpt.com/c/segment-alpha';
+  const first=store.setChatUrl(task.id,base+'?model=auto#reply');
+  const again=store.setChatUrl(task.id,base+'/?model=high');
+  assert.equal(first.id,again.id);
+  assert.equal(store.getTask(task.id).chat_url,base);
+  assert.equal(store.getTask(task.id).conversations.length,1);
+  assert.throws(()=>store.setChatUrl(task.id,'https://chatgpt.com/'),/invalid_provider_conversation_url/);
+  assert.throws(()=>store.setChatUrl(task.id,'https://not-chatgpt.example/c/segment-alpha'),/invalid_provider_conversation_url/);
+  assert.equal(store.getTask(task.id).conversations.length,1);
+  store.close();
+  store=new Store(dbPath);
+  assert.equal(store.getTask(task.id).chat_url,base);
+  assert.equal(store.getTask(task.id).conversations.length,1);
+});
+
+test('multiple planned provider rotations preserve a single Task and do not recount failed runs', t => {
+  // The persistence/reopen contract is covered separately on a real SQLite file.
+  // This stress case exercises 72 run records in memory without filesystem fsync overhead.
+  const store=new Store(':memory:');
+  t.after(()=>store.close());
+  const task=store.createTask('Projeto de longa duração');
+  store.upsertProjectMemory(task.id,{category:'goal',key:'Produto',content:'Concluir produto modular.'});
+  const provider=(n)=>'https://chatgpt.com/c/segment-'+n;
+  store.setChatUrl(task.id,provider(1));
+  for(let segment=1;segment<=3;segment++){
+    for(let turn=0;turn<SUCCESSFUL_TURNS_PER_SEGMENT;turn++){
+      const id=store.startRun(task.id);
+      if(turn===7){
+        store.finishRun(task.id,id,'provider_timeout');
+        assert.equal(store.getTask(task.id).conversations[0].completed_turns,turn);
+        const recovery=store.startRun(task.id);
+        store.finishRun(task.id,recovery);
+      }else{
+        store.finishRun(task.id,id);
+      }
+    }
+    const current=store.getTask(task.id);
+    assert.equal(planProviderConversation(current).automaticRotation,true);
+    assert.equal(current.conversations[0].completed_turns,SUCCESSFUL_TURNS_PER_SEGMENT);
+    if(segment<3) store.setChatUrl(task.id,provider(segment+1),store.latestCheckpoint(task.id)?.version||0);
+  }
+  const current=store.getTask(task.id);
+  assert.equal(current.conversations.length,3);
+  assert.equal(current.project_memory.items.length,1);
+  assert.equal(current.conversations.reduce((total,item)=>total+item.completed_turns,0),72);
+  assert.ok(store.buildContinuationPrompt(task.id,'Continuar.').includes('Concluir produto modular.'));
+});
