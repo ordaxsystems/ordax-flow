@@ -1,6 +1,6 @@
 import { WebContentsView, session } from 'electron';
 import { assertProviderDraftAllowed, ensureEmptyNewComposer } from '../src/provider-composer-transition.mjs';
-import { submitExactlyOnce } from '../src/provider-submit-receipt.mjs';
+import { submitExactlyOnce, waitForSubmitControl } from '../src/provider-submit-receipt.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -542,7 +542,8 @@ export class EmbeddedChatWorker {
     // Select one legitimate submit control; do not perform multiple
     // fallbacks after an ambiguous response. Electron CDP dispatches a trusted
     // browser input event, unlike element.click()/form.requestSubmit().
-    const target = await wc.executeJavaScript(`(() => {
+    const target = await waitForSubmitControl({
+      read: () => wc.executeJavaScript(`(() => {
       const input = ${composerExpression()};
       const form = input?.closest('form');
       const scope = form || document;
@@ -552,22 +553,16 @@ export class EmbeddedChatWorker {
         || form?.querySelector('button[type="submit"]:not([disabled])') || null;
       const rect = button?.getBoundingClientRect();
       return { button:!!button, form:!!form, x:rect?.left + rect?.width / 2, y:rect?.top + rect?.height / 2 };
-    })()`).catch(() => ({button:false,form:false}));
-    if (!target.button && !target.form) throw new Error('send_control_unavailable');
-    if (target.button && (!Number.isFinite(target.x) || !Number.isFinite(target.y))) throw new Error('send_control_unavailable');
+    })()`).catch(() => ({button:false,form:false})),
+      wait: () => sleep(150),
+      maxChecks:40
+    });
 
     const fire = async () => {
       if (this.streamContext) this.streamContext.submitAttemptAt = Date.now();
-      if (target.button) {
-        await wc.debugger.sendCommand('Input.dispatchMouseEvent', { type:'mouseMoved', x:target.x, y:target.y });
-        await wc.debugger.sendCommand('Input.dispatchMouseEvent', { type:'mousePressed', x:target.x, y:target.y, button:'left', clickCount:1 });
-        await wc.debugger.sendCommand('Input.dispatchMouseEvent', { type:'mouseReleased', x:target.x, y:target.y, button:'left', clickCount:1 });
-      } else {
-        // Keyboard activation is a single alternative ONLY when no submit button
-        // exists; it is never used as a retry after another submission attempt.
-        await wc.debugger.sendCommand('Input.dispatchKeyEvent', { type:'rawKeyDown', key:'Enter', code:'Enter', windowsVirtualKeyCode:13, nativeVirtualKeyCode:13 });
-        await wc.debugger.sendCommand('Input.dispatchKeyEvent', { type:'keyUp', key:'Enter', code:'Enter', windowsVirtualKeyCode:13, nativeVirtualKeyCode:13 });
-      }
+      await wc.debugger.sendCommand('Input.dispatchMouseEvent', { type:'mouseMoved', x:target.x, y:target.y });
+      await wc.debugger.sendCommand('Input.dispatchMouseEvent', { type:'mousePressed', x:target.x, y:target.y, button:'left', clickCount:1 });
+      await wc.debugger.sendCommand('Input.dispatchMouseEvent', { type:'mouseReleased', x:target.x, y:target.y, button:'left', clickCount:1 });
     };
 
     try {
