@@ -1,5 +1,7 @@
 # OrdaX Flow — Client + Hub (desktop legado 0.4.12)
 
+**Histórico central (contrato, não implantação):** [FLOW-CENTRAL-HISTORY.md](docs/FLOW-CENTRAL-HISTORY.md) define o journal canônico de conversas dentro do PostgreSQL OrdaX Platform, reutilizando a identidade oficial e com autorização RLS por proprietário. Código testado; migração SQL e navegador real ainda pendentes de homologação.
+
 **Login único:** Flow reutiliza a Conta OrdaX pela OrdaX Platform, sem novo cadastro, senha ou conta ChatGPT. O contrato OAuth 2.1 PKCE da entrada foi implementado, **desligado até existir cliente OAuth Flow e callback HTTPS cadastrados na autoridade real**. [SSO e limites atuais](docs/FLOW-SSO-BOUNDARY.md). A camada de reconhecimento de sessão está implementada e testada com sessão simulada; o login OAuth real e o callback ainda precisam ser configurados no owner de identidade.
 
 **Integração P0 de identidade:** `src/relay/platform-account.mjs` verifica conta via o endpoint canônico `/v3/product/session` da OrdaX Platform; `src/relay/platform-composition.mjs` exige portas reais de autorização, sessão, projetos, RBAC do Hub, dispatch e idempotência. Testada com Platform HTTP simulada; **produção e login do navegador ainda não conectados**. Nenhuma dependência do OrdaX OS.

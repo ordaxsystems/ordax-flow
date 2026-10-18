@@ -9,16 +9,19 @@ import { createFlowRelay } from './relay.mjs';
 import { createFlowWebHandler } from './web-apps.mjs';
 import { createFlowOAuthHandler } from './oauth-entry.mjs';
 import { createFlowPostgresOAuthTransactionStore } from './postgres-oauth-transactions.mjs';
+import { createFlowConversationStore } from './conversation-store.mjs';
+import { createFlowOwnerScopedQuery } from './postgres-owner-query.mjs';
 
 export function createFlowPlatformGateway({
   platformOrigin, platformFetch, platformTimeoutMs=12000, allowLoopbackHttp=false,
-  publicOrigin, authenticateBrowserSession, oauth,
+  publicOrigin, authenticateBrowserSession, oauth, conversationQuery, conversationTransaction,
   authorizeTask, listProjects, authorizeHub, getHubOverview,
   dispatch, idempotency
 }) {
   if (typeof authenticateBrowserSession!=='function' ||
-      typeof authorizeTask!=='function' ||
-      typeof listProjects!=='function' ||
+      (typeof conversationQuery!=='function' &&
+       typeof conversationTransaction!=='function' &&
+       (typeof authorizeTask!=='function'||typeof listProjects!=='function')) ||
       typeof authorizeHub!=='function' ||
       typeof getHubOverview!=='function' ||
       typeof dispatch!=='function' ||
@@ -31,10 +34,23 @@ export function createFlowPlatformGateway({
   const browserSession=createFlowBrowserSessionVerifier({
     publicOrigin,verifyAccountSession:authenticateBrowserSession,allowLoopbackHttp
   });
+  if(conversationQuery!==undefined && conversationTransaction!==undefined)
+    throw new TypeError('flow_conversation_single_canonical_query_required');
+  if(conversationQuery!==undefined && !allowLoopbackHttp)
+    throw new TypeError('flow_conversation_owner_scoped_transaction_required');
+  const ownerQuery=typeof conversationTransaction==='function'
+    ? createFlowOwnerScopedQuery({withTransaction:conversationTransaction})
+    : conversationQuery;
+  const conversations=typeof ownerQuery==='function'
+    ? createFlowConversationStore({query:ownerQuery}) : null;
   const web=createFlowWebHandler(createFlowRelay({
     authenticate,authenticateRequest:browserSession,
-    authorizeTask,listProjects,authorizeHub,getHubOverview,
-    dispatch,idempotency
+    authorizeTask:conversations?.authorizeTask||authorizeTask,
+    listProjects:conversations?.listProjects||listProjects,
+    createConversation:conversations?.createConversation,
+    getHistory:conversations?.getHistory,
+    recordTurn:conversations?.recordTurn,
+    authorizeHub,getHubOverview,dispatch,idempotency
   }));
   if(oauth!==undefined){
     // Production must use the canonical, durable PostgreSQL query executor;

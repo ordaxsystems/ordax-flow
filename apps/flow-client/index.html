@@ -4,6 +4,7 @@
 <body><div class="layout"><aside>
   <div class="brand">OrdaX <span>Flow</span></div><p class="tagline">Seus projetos e conversas com IA, em vários dispositivos.</p>
   <hr class="divider"><p class="kicker">Seus projetos</p>
+  <form id="newConversation" hidden><label class="small" for="conversationTitle">Nova conversa</label><input id="conversationTitle" class="input" type="text" maxlength="160" required placeholder="Nome da conversa"><button class="primary" type="submit">Criar conversa</button></form>
   <nav id="projects" aria-label="Projetos"><p class="small muted">Conectando à conta OrdaX…</p></nav>
   <hr class="divider"><p class="small muted">Conta e permissões pertencem à central OrdaX. Nenhuma conta ChatGPT é necessária.</p>
 </aside><main>
@@ -13,6 +14,7 @@
   <p><a id="login" href="/auth/start?app=client" hidden>Entrar com minha Conta OrdaX</a></p>
   <section class="surface" aria-label="Conversa">
     <h2>Conversa</h2><p class="muted small">Prévia operacional. Histórico completo e sincronização entre dispositivos aguardam integração ao SSOT central.</p>
+    <button id="olderMessages" type="button" hidden>Carregar mensagens anteriores</button>
     <div id="thread" class="thread" role="log" aria-live="polite"></div>
     <form id="composer" class="compose">
       <label for="prompt" class="small">Mensagem ao projeto selecionado</label>

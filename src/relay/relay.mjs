@@ -65,7 +65,8 @@ function hubProjection(overview) {
  */
 export function createFlowRelay({
   authenticate, authenticateRequest, authorizeTask, dispatch, idempotency,
-  listProjects, authorizeHub, getHubOverview
+  listProjects, authorizeHub, getHubOverview,
+  createConversation, getHistory, recordTurn
 }) {
   if (![authenticate,authorizeTask,dispatch].every(fn=>typeof fn==='function') ||
       typeof idempotency?.execute!=='function') {
@@ -75,6 +76,8 @@ export function createFlowRelay({
     throw new TypeError('invalid_session_adapter');
   if (listProjects!==undefined && typeof listProjects!=='function')
     throw new TypeError('invalid_projects_adapter');
+  if ([createConversation,getHistory,recordTurn].some(fn=>fn!==undefined&&typeof fn!=='function'))
+    throw new TypeError('invalid_conversation_adapter');
   if (Boolean(authorizeHub)!==Boolean(getHubOverview) ||
       (authorizeHub!==undefined && typeof authorizeHub!=='function') ||
       (getHubOverview!==undefined && typeof getHubOverview!=='function'))
@@ -89,11 +92,16 @@ export function createFlowRelay({
     const hubSessionRoute=request.method==='GET' && pathname==='/v1/hub/session' &&
       typeof authorizeHub==='function';
     const messageRoute=request.method==='POST' && pathname==='/v1/messages';
+    const createRoute=request.method==='POST' && pathname==='/v1/conversations' &&
+      typeof createConversation==='function';
+    const historyMatch=request.method==='GET'&&typeof getHistory==='function'
+      ? /^\/v1\/history\/([A-Za-z0-9_.:-]{1,128})$/.exec(pathname) : null;
     const projectRoute=request.method==='GET' && pathname==='/v1/projects' &&
       typeof listProjects==='function';
     const hubRoute=request.method==='GET' && pathname==='/v1/hub/overview' &&
       typeof authorizeHub==='function';
-    if (!sessionRoute && !hubSessionRoute && !messageRoute && !projectRoute && !hubRoute)
+    if (!sessionRoute && !hubSessionRoute && !messageRoute && !createRoute &&
+        !historyMatch && !projectRoute && !hubRoute)
       return reply(response,404,{error:'not_found'});
 
     const header=String(request.headers.authorization||'');
@@ -115,7 +123,10 @@ export function createFlowRelay({
     }
 
     try {
-      if(sessionRoute)return reply(response,200,{authenticated:true});
+      if(sessionRoute)return reply(response,200,{
+        authenticated:true,
+        ...(createConversation&&getHistory?{features:{conversations:true,history:true}}:{})
+      });
       if(hubSessionRoute){
         const allowed=await authorizeHub({principal,capability:HUB_CAPABILITY});
         if(allowed!==true)return reply(response,403,{error:'forbidden'});
@@ -128,6 +139,27 @@ export function createFlowRelay({
       }
       if (projectRoute)
         return reply(response,200,{projects:projectProjection(await listProjects({principal,limit:100}))});
+      if(createRoute){
+        const body=await parseRequest(request);
+        if(!body||typeof body!=='object'||Array.isArray(body)||
+           Object.keys(body).some(k=>k!=='title')||typeof body.title!=='string'||
+           !body.title.trim()||body.title.trim().length>160)
+          return reply(response,400,{error:'invalid_title'});
+        return reply(response,201,{conversation:await createConversation({principal,title:body.title})});
+      }
+      if(historyMatch){
+        const taskId=historyMatch[1];
+        if(await authorizeTask({principal,taskId})!==true)
+          return reply(response,404,{error:'task_not_found'});
+        const url=new URL(request.url||'/', 'http://localhost');
+        if([...url.searchParams.keys()].some(k=>k!=='before')||
+           url.searchParams.getAll('before').length>1)
+          return reply(response,400,{error:'invalid_cursor'});
+        const before=url.searchParams.get('before');
+        if(before!==null && !/^[1-9][0-9]{0,18}$/.test(before))
+          return reply(response,400,{error:'invalid_cursor'});
+        return reply(response,200,await getHistory({principal,taskId,before,limit:50}));
+      }
 
       const body=await parseRequest(request);
       if(!valid(body)) return reply(response,400,{error:'invalid_message'});
@@ -141,6 +173,7 @@ export function createFlowRelay({
       const result=await idempotency.execute(key,fingerprint,async()=>{
         const answer=await dispatch({principal,taskId,requestId,text});
         if(typeof answer?.text!=='string')throw Error('invalid_provider_response');
+        if(recordTurn)await recordTurn({principal,taskId,requestId,userText:text,assistantText:answer.text});
         return {taskId,requestId,message:{role:'assistant',content:answer.text}};
       });
       return reply(response,200,result);
