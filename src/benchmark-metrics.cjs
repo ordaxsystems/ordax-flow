@@ -31,9 +31,17 @@ function summarize(rows, key) {
     p95_reliable_sample:values.length>=5
   };
 }
+const KNOWN_ERRORS=new Set([
+  'send_not_observed','send_confirmation_unknown','response_not_observed',
+  'chatgpt_draft_present','chatgpt_verification_required',
+  'chatgpt_authentication_in_progress','chatgpt_login_required',
+  'new_chat_composer_unavailable','new_chat_composer_not_empty',
+  'new_chat_composer_focus_failed','new_chat_composer_clear_failed',
+  'send_control_unavailable','composer_input_not_recognized'
+]);
 function errorCode(value) {
   const raw=String(value||'').split(':').at(-1).trim();
-  return /^[a-z][a-z0-9_]{2,80}$/.test(raw)?raw:'other_failure';
+  return KNOWN_ERRORS.has(raw)?raw:'other_failure';
 }
 function completed(rows) {
   return rows.filter(row=>row?.status==='succeeded'||row?.status==='failed');
