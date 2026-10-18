@@ -14,7 +14,15 @@ async function load(){
     for(const name of names)document.getElementById(name).textContent=
       result.stats[name].toLocaleString('pt-BR');
     state.textContent='Indicadores agregados carregados.';
-  }catch(error){state.textContent=error.message;state.classList.add('error');}
+  }catch(error){
+    state.textContent=error.message;state.classList.add('error');
+    if(error.message.includes('Entre com sua conta')) {
+      try {
+        const auth=await callFlow('/v1/auth/config');
+        if(auth.loginAvailable===true)document.getElementById('login').hidden=false;
+      } catch { /* SSO não registrado ou indisponível. */ }
+    }
+  }
   finally{refresh.disabled=false;}
 }
 refresh.addEventListener('click',load);

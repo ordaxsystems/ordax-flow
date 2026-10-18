@@ -7,10 +7,11 @@ import { createFlowPlatformAuthenticator } from './platform-account.mjs';
 import { createFlowBrowserSessionVerifier } from './browser-session.mjs';
 import { createFlowRelay } from './relay.mjs';
 import { createFlowWebHandler } from './web-apps.mjs';
+import { createFlowOAuthHandler } from './oauth-entry.mjs';
 
 export function createFlowPlatformGateway({
   platformOrigin, platformFetch, platformTimeoutMs=12000, allowLoopbackHttp=false,
-  publicOrigin, authenticateBrowserSession,
+  publicOrigin, authenticateBrowserSession, oauth,
   authorizeTask, listProjects, authorizeHub, getHubOverview,
   dispatch, idempotency
 }) {
@@ -29,9 +30,23 @@ export function createFlowPlatformGateway({
   const browserSession=createFlowBrowserSessionVerifier({
     publicOrigin,verifyAccountSession:authenticateBrowserSession,allowLoopbackHttp
   });
-  return createFlowWebHandler(createFlowRelay({
+  const web=createFlowWebHandler(createFlowRelay({
     authenticate,authenticateRequest:browserSession,
     authorizeTask,listProjects,authorizeHub,getHubOverview,
     dispatch,idempotency
   }));
+  if(oauth!==undefined){
+    const oauthHandler=createFlowOAuthHandler({
+      ...oauth,publicOrigin,allowLoopbackHttp
+    });
+    return (request,response)=>oauthHandler(request,response,web);
+  }
+  return async(request,response)=>{
+    if(request.method==='GET'&&new URL(request.url||'/',publicOrigin).pathname==='/v1/auth/config'){
+      response.writeHead(200,{'content-type':'application/json','cache-control':'no-store'});
+      response.end(JSON.stringify({loginAvailable:false}));
+      return;
+    }
+    return web(request,response);
+  };
 }

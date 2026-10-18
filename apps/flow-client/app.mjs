@@ -13,8 +13,12 @@ async function initialize(){
   try {
     const session=await callFlow('/v1/session');
     if(session.authenticated!==true){
-      state('A Conta OrdaX não está autenticada neste navegador. A entrada única depende da sessão oficial da plataforma.',true);
+      state('A Conta OrdaX não está autenticada neste navegador.',true);
       el('projects').textContent='Entre na Conta OrdaX pelo portal oficial.';
+      try {
+        const auth=await callFlow('/v1/auth/config');
+        if(auth.loginAvailable===true)el('login').hidden=false;
+      } catch { /* Login indisponível: nenhum link fictício. */ }
       return;
     }
     const data=await callFlow('/v1/projects');

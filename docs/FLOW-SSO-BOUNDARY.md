@@ -18,6 +18,24 @@ Decisão de produto (18/10/2026): o Flow Client e o Flow Hub **não têm cadastr
 - `GET /v1/hub/session`: exige conta válida **e** autorização `flow:hub:read`; caso contrário, 401 ou 403. A UI do Hub consulta esse endpoint antes das métricas.
 - O Flow Client consulta a sessão antes dos projetos; quando não autenticado, não inventa URL de login nem abre um formulário local.
 
+## Entrada OAuth 2.1 com PKCE — implementação de contrato
+
+O servidor Flow agora dispõe de `src/relay/oauth-entry.mjs`, **desabilitado por padrão**. Com o cliente OAuth **registrado na Conta OrdaX**, o único gateway liga `/auth/start?app=client|hub` ao `/auth/v1/oauth/authorize` do emissor canônico e recebe `/auth/callback`. O código usa estado aleatório vinculado a cookie seguro HttpOnly, `code_challenge_method=S256`, PKCE, redirecionamento exato, transação consumida uma única vez e paths de retorno limitados a `/client` ou `/hub`. O Flow **não** hospeda tela de senha, não importa a conta Studio/ChatGPT e não aceita token ou identidade a partir de parâmetros no navegador.
+
+Configuração obrigatória na composição `createFlowPlatformGateway({oauth:{issuer,clientId,transactionStore,completeAccountLogin}})`:
+
+- `clientId`: ID **real**, concedido pelo Supabase Auth canônico ao aplicativo Flow. Não usar cliente MCP/Studio/ChatGPT.
+- `issuer`: URL OAuth canônica `https://...supabase.co/auth/v1`, derivada da autoridade oficial da OrdaX Platform.
+- `publicOrigin`: domínio HTTPS real do Flow. Registrar exatamente `<publicOrigin>/auth/callback` no emissor antes de ativar. Nenhum domínio inventado nem redirects arbitrários.
+- `transactionStore.put/take`: transações de estado/PKCE efêmeras, atômicas e **duráveis entre múltiplas réplicas**. Não criar Map singleton em produção; o Map dos testes é exclusivamente fixture. TTL de 10 minutos e consumo único.
+- `completeAccountLogin`: **port de autoridade da OrdaX Platform**. Faz troca do authorization code + code verifier com o OAuth oficial, verifica a identidade junto à Platform e emite handle de sessão opaco verificável no backend com `verifyAccountSession`. Retorna `{verified:true,sessionHandle,expiresAtUnix}`; o Flow define apenas o cookie seguro `__Host-ordax_flow_session`. É sessão de aplicativo, **não** outra conta/identidade. Renovação e revogação exigem implementação na autoridade da Platform; sem esse port real o login não funciona.
+
+`GET /v1/auth/config` expõe somente `{loginAvailable:boolean}`; as interfaces só exibem "Entrar com Conta OrdaX" quando a integração está configurada. Nem Client nem Hub possuem fallback manual. O mesmo login pode abrir o Hub, mas só `flow:hub:read` permite operar. As credenciais de IA e OAuth nunca são enviadas ao navegador; nenhuma autorização de Runtime ou de OrdaX OS é inferida do login.
+
+### Provas do contrato
+
+`node --test test/oauth-entry.test.mjs` verifica PKCE S256, domínio e callback fixos, estado vinculado ao navegador, rejeição de acesso cruzado, expiração, consumo único, negação de autorização e recusa de sessão falsa. O provedor e a autoridade foram **simulados**, não existe OAuth Flow registrado para produção nesta entrega.
+
 ## O que ainda falta (não declarar concluído)
 
 - Verificar o mecanismo SSO real de sessão web da OrdaX Platform em um **domínio autorizado** e conectar o port `verifyAccountSession`, inclusive logout/revogação e renovação.
