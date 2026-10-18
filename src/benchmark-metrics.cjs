@@ -76,7 +76,9 @@ function buildHistoryReport(rows,{limit=100,generatedAt=new Date().toISOString()
     source:'local_sqlite_read_only',
     examined:rows.length,
     completed:settled.length,
-    running:rows.length-settled.length,
+    running:rows.filter(row=>row?.status==='running').length,
+    interrupted:rows.filter(row=>row?.status==='interrupted').length,
+    other_states:rows.filter(row=>!['succeeded','failed','running','interrupted'].includes(row?.status)).length,
     sample_limit:limit,
     note:'p95 is suppressed below 5 samples; p99 below 20. UI and provider timings are not interchangeable. This report does not send prompts.',
     modes:byMode
