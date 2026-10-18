@@ -130,6 +130,8 @@ function friendlyError(error) {
     chatgpt_authentication_in_progress: 'Conclua o login antes de enviar.',
     composer_not_found: 'O campo de mensagem do ChatGPT ainda não está pronto.',
     send_not_observed: 'O ChatGPT não confirmou o envio. Nada foi reenviado automaticamente.',
+    send_confirmation_unknown: 'O campo do ChatGPT foi esvaziado, mas o envio não pôde ser confirmado. Confira a conversa no ChatGPT antes de tentar novamente; não houve reenvio automático.',
+    send_control_unavailable: 'Não foi possível localizar um botão de envio utilizável no ChatGPT. Confira o estado da sessão oficial.',
     response_not_observed: 'O envio ocorreu, mas a resposta não pôde ser confirmada. A memória da tarefa foi preservada.',
     google_login_button_not_found: 'O botão de login do Google não ficou disponível.',
     google_login_navigation_not_observed: 'O fluxo do Google não confirmou a navegação.',
