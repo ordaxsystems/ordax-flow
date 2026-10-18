@@ -1,6 +1,7 @@
 const { spawnSync } = require('node:child_process');
 const { DatabaseSync } = require('node:sqlite');
 const path = require('node:path');
+const {summarize}=require('../src/benchmark-metrics.cjs');
 
 const root = path.resolve(__dirname, '..');
 const dbPath = path.join(process.env.LOCALAPPDATA, 'OrdaX', 'Gratis', 'data', 'ordax-gratis.sqlite');
@@ -23,28 +24,6 @@ function latestMetrics(mode) {
   if (!row) return null;
   return { ...row, metrics: row.metrics ? JSON.parse(row.metrics) : null };
 }
-function percentile(values, p) {
-  const xs = values.filter(Number.isFinite).slice().sort((a, b) => a - b);
-  if (!xs.length) return null;
-  if (xs.length === 1) return xs[0];
-  const index = (xs.length - 1) * p;
-  const lo = Math.floor(index), hi = Math.ceil(index);
-  if (lo === hi) return xs[lo];
-  return Math.round((xs[lo] + (xs[hi] - xs[lo]) * (index - lo)) * 100) / 100;
-}
-function summarize(rows, key) {
-  const values = rows.map(row => row[key]).filter(Number.isFinite);
-  return values.length ? {
-    n: values.length,
-    min: Math.min(...values),
-    p50: percentile(values, 0.50),
-    p95: percentile(values, 0.95),
-    p99: percentile(values, 0.99),
-    max: Math.max(...values),
-    mean: Math.round((values.reduce((a, b) => a + b, 0) / values.length) * 100) / 100
-  } : null;
-}
-
 const samples = [];
 try {
   for (const mode of modes) {
