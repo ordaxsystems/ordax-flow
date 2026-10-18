@@ -8,6 +8,7 @@ import { createFlowBrowserSessionVerifier } from './browser-session.mjs';
 import { createFlowRelay } from './relay.mjs';
 import { createFlowWebHandler } from './web-apps.mjs';
 import { createFlowOAuthHandler } from './oauth-entry.mjs';
+import { createFlowPostgresOAuthTransactionStore } from './postgres-oauth-transactions.mjs';
 
 export function createFlowPlatformGateway({
   platformOrigin, platformFetch, platformTimeoutMs=12000, allowLoopbackHttp=false,
@@ -36,8 +37,15 @@ export function createFlowPlatformGateway({
     dispatch,idempotency
   }));
   if(oauth!==undefined){
+    // Production must use the canonical, durable PostgreSQL query executor;
+    // an in-memory OAuth state adapter is permitted only for loopback E2Es.
+    if(typeof oauth.postgresQuery!=='function' && !allowLoopbackHttp)
+      throw new TypeError('flow_oauth_durable_postgres_required');
+    const transactionStore=typeof oauth.postgresQuery==='function'
+      ? createFlowPostgresOAuthTransactionStore({query:oauth.postgresQuery})
+      : oauth.transactionStore;
     const oauthHandler=createFlowOAuthHandler({
-      ...oauth,publicOrigin,allowLoopbackHttp
+      ...oauth,transactionStore,publicOrigin,allowLoopbackHttp
     });
     return (request,response)=>oauthHandler(request,response,web);
   }

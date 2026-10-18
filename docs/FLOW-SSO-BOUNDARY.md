@@ -48,3 +48,17 @@ Configuração obrigatória na composição `createFlowPlatformGateway({oauth:{i
 `node --test test/browser-session.test.mjs test/platform-composition.test.mjs` exercita sessões simuladas, expiração, origem, falsificação de claims, perfis de operador e acesso segregado. Os testes de simulação **não são prova de login real nem de SSO de produção**.
 
 Regra de SSOT: os identitificadores de sujeito são emitidos pela OrdaX Platform; projetos, RBAC e memória também precisam provir dos respectivos owners canônicos. Nenhum sistema de contas Flow separado.
+
+
+## Persistência transacional de estado OAuth (preparada; não aplicada)
+
+- Fonte: `src/relay/postgres-oauth-transactions.mjs` e `sql/flow-oauth-transactions.sql`.
+- A zona Cloudflare `ordax.com.br` está ativa, mas **não existe domínio/Worker Flow publicado** na conta consultada. Não escolher nem cadastrar um callback definitivo antes de publicar e validar o domínio.
+- A OrdaX Platform já utiliza o PostgreSQL central. O script cria **somente a tabela efêmera de transações OAuth no schema privado `flow_private` do mesmo PostgreSQL**, não cria novos usuários, contas, provedor OAuth, duplicação do Supabase `auth.flow_state` ou banco independente. Não foi aplicado à produção.
+- O registro de PKCE só armazena o SHA-256 do `state`, verificador e destino restrito. A reserva impõe TTL máximo de 10 minutos; o consumo é **`DELETE ... RETURNING` atômico**, válido entre múltiplos servidores. Replay não retorna estado. Limpeza de expirados deve ser operada pela central, com job autorizado e auditável.
+- Na composição `createFlowPlatformGateway`, produção agora **exige `oauth.postgresQuery`** com executor autorizado do PostgreSQL canônico antes de habilitar `/auth/start`. `transactionStore` em memória é aceito apenas quando `allowLoopbackHttp` habilita fixtures locais; não é fallback produtivo.
+- As consultas são parametrizadas, o schema não é exposto pela API pública e seus privilégios devem ser concedidos apenas ao papel de serviço do Flow pela equipe da plataforma. A migração requer revisão/aplicação pelo processo canônico da OrdaX Platform, depois de configurar o papel e Hyperdrive/driver de produção; não usar `service_role` no frontend.
+
+Testes: `test/postgres-oauth-transactions.test.mjs` usa um executor determinístico compartilhado para simular quatro réplicas, 100 dispositivos, consumo único, duplicidade, expiração e banco indisponível. **Não** substitui a prova real em PostgreSQL/Hyperdrive nem valida o login real; um teste de integração no banco efêmero deverá ser realizado antes de promover o Flow.
+
+Próximos gates bloqueadores: definir endereço/hostname oficial Flow, criar somente então cliente OAuth e callback real no emissor, conectar o serviço canônico de emissão/validação/revogação de sessões `completeAccountLogin`, aplicar o SQL em schema privado sob revisão, provar PKCE e retorno entre duas réplicas reais e completar storage, quotas e roteador de IA.

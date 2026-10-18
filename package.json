@@ -8,7 +8,7 @@
   "author": "OrdaX Systems",
   "scripts": {
     "start": "electron .",
-    "check": "node --check desktop/main.mjs && node --check desktop/embedded-worker.mjs && node --check desktop/worker-preload.cjs && node --check desktop/ui.js && node --check src/store.mjs && node --check src/continuation-context.mjs && node --check src/memory-suggestions.mjs && node --check src/memory-candidates.mjs && node --check scripts/e2e-lock.cjs && node --check scripts/live-ui-text-smoke.cjs && node --check scripts/live-ui-stream-smoke.cjs && node --check scripts/live-ui-image-smoke.cjs && node --check scripts/live-ui-continuity-smoke.cjs && node --check scripts/live-ui-restart-smoke.cjs && node --check scripts/live-ui-history-smoke.cjs && node --check scripts/set-observer-mode.cjs && node --check scripts/benchmark-suite.cjs && node --check src/relay/relay.mjs && node --check src/relay/web-apps.mjs && node --check src/relay/platform-account.mjs && node --check src/relay/platform-composition.mjs && node --check src/relay/browser-session.mjs && node --check src/relay/oauth-entry.mjs && node --check apps/shared/api.mjs && node --check apps/flow-client/app.mjs && node --check apps/flow-hub/app.mjs",
+    "check": "node --check desktop/main.mjs && node --check desktop/embedded-worker.mjs && node --check desktop/worker-preload.cjs && node --check desktop/ui.js && node --check src/store.mjs && node --check src/continuation-context.mjs && node --check src/memory-suggestions.mjs && node --check src/memory-candidates.mjs && node --check scripts/e2e-lock.cjs && node --check scripts/live-ui-text-smoke.cjs && node --check scripts/live-ui-stream-smoke.cjs && node --check scripts/live-ui-image-smoke.cjs && node --check scripts/live-ui-continuity-smoke.cjs && node --check scripts/live-ui-restart-smoke.cjs && node --check scripts/live-ui-history-smoke.cjs && node --check scripts/set-observer-mode.cjs && node --check scripts/benchmark-suite.cjs && node --check src/relay/relay.mjs && node --check src/relay/web-apps.mjs && node --check src/relay/platform-account.mjs && node --check src/relay/platform-composition.mjs && node --check src/relay/browser-session.mjs && node --check src/relay/oauth-entry.mjs && node --check src/relay/postgres-oauth-transactions.mjs && node --check apps/shared/api.mjs && node --check apps/flow-client/app.mjs && node --check apps/flow-hub/app.mjs",
     "test": "node --test test/*.test.mjs",
     "validate": "npm run check && npm test",
     "test:live:text": "node scripts/live-ui-text-smoke.cjs",
@@ -16,7 +16,7 @@
     "test:live:restart": "node scripts/live-ui-restart-smoke.cjs",
     "test:live:history": "node scripts/live-ui-history-smoke.cjs",
     "test:live:typing": "node scripts/live-ui-typing-smoke.mjs",
-    "test:flow:boundaries": "node --test test/flow-apps.test.mjs test/relay.test.mjs test/platform-account.test.mjs test/platform-composition.test.mjs test/browser-session.test.mjs test/oauth-entry.test.mjs",
+    "test:flow:boundaries": "node --test test/flow-apps.test.mjs test/relay.test.mjs test/platform-account.test.mjs test/platform-composition.test.mjs test/browser-session.test.mjs test/oauth-entry.test.mjs test/postgres-oauth-transactions.test.mjs",
     "benchmark": "node scripts/read-benchmark.cjs",
     "build:win": "electron-builder --win portable",
     "benchmark:live": "node scripts/benchmark-suite.cjs",
