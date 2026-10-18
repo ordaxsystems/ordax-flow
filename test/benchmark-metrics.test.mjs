@@ -18,10 +18,11 @@ test('history separates successful and failed runs and does not leak raw errors'
     {status:'succeeded',observer_mode:'auto',metrics:JSON.stringify({prepare_ms:90,total_ms:6500})},
     {status:'failed',observer_mode:'auto',metrics:JSON.stringify({prepare_ms:800,failed_stage:'submit'}),error:'submit:send_not_observed'},
     {status:'running',observer_mode:'auto',metrics:null},
+    {status:'interrupted',observer_mode:'fast',metrics:null},
     {status:'failed',observer_mode:'beta',metrics:'{broken',error:'something containing token SECRET'},
   ];
   const report=buildHistoryReport(rows,{limit:5,generatedAt:'fixed'});
-  assert.equal(report.completed,4);assert.equal(report.running,1);
+  assert.equal(report.completed,4);assert.equal(report.running,1);assert.equal(report.interrupted,1);assert.equal(report.other_states,0);
   assert.equal(report.modes.auto.success_rate_pct,66.67);
   assert.equal(report.modes.auto.successful_timings.prepare_ms.p50,100);
   assert.equal(report.modes.auto.successful_timings.prepare_ms.p95,null);
