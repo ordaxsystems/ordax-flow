@@ -44,3 +44,10 @@ O banco `%LOCALAPPDATA%\OrdaX\Gratis\data\ordax-gratis.sqlite` é a fonte única
 ## Gates
 
 `npm run validate` valida módulos, integridade, contratos e persistência. Os testes específicos de projeção verificam equivalência com o estado completo, índice SQLite, mensagens de mesma data, vínculos de imagens e rotação depois de respostas concluídas. Os testes ao vivo do Electron/ChatGPT são um gate separado e não são substituídos pelos testes unitários.
+
+## Confirmação de envio via ChatGPT Web — gate 18/10/2026
+
+- Um único evento de envio por execução, pela interface pública do navegador (sem endpoints privados). **Nunca** encadear click/requestSubmit/mouse/Enter para a mesma mensagem após resultado incerto.
+- A limpeza do editor **não prova envio**. Confirmação requer observação de mensagem do usuário correspondente ou novo permalink canônico de conversa; timeout com editor vazio é `send_confirmation_unknown`, não sucesso nem permissão para reenviar.
+- Uma execução com aceite incerto permanece auditável e exige reconciliação humana antes de nova tentativa. Não transformar em `succeeded` e não ressuscitar automaticamente a mesma mensagem.
+- O ChatGPT Web é somente laboratório. O envio em produção do Hub deve usar provedor autorizado por API com receipts/idempotência do servidor.
