@@ -66,3 +66,10 @@ O banco `%LOCALAPPDATA%\OrdaX\Gratis\data\ordax-gratis.sqlite` é a fonte única
 A validação real do Grátis confirmou que um `WebContentsView` pode receber `Input.insertText` mas ignorar eventos simulados de ponteiro. O envio canônico usa **um único** `HTMLFormElement.requestSubmit(button)` no formulário oficial da página, depois de verificar editor e botão `type=submit` habilitado. Esse mecanismo é parte da API HTML padrão; não chama endpoint privado, não modifica o conteúdo da mensagem e não faz retries implícitos. Sucesso só existe após recibo observável (permalink canônico de chat ou mensagem correspondente) e resposta de IA verificada. O Jarvis e o Grátis reutilizam esse mesmo worker.
 
 Os testes de aceitação incluem: contrato de envio único, proteção de rascunho, estados visuais de preparação, streaming progressivo real e contagem SQLite de uma mensagem de usuário e uma de assistente por Task de teste. Evitar contabilizar textos de status como streaming. Números de latência de uma ou duas mensagens não equivalem a benchmark estatístico; usar `npm run benchmark:live` em sessões autorizadas para p50/p95 quando for necessário comparar desempenho.
+
+### Benchmark histórico seguro — outubro/2026
+
+- `npm run benchmark` **não envia prompts**: lê até 100 execuções recentes do SQLite em modo somente leitura; `ORDAX_BENCH_HISTORY_LIMIT` permite de 1 a 1000 registros.
+- Resultados concluídos e falhas são apurados separadamente por observador, com distribuição por etapa (`prepare_ms`, `submit_confirm_ms`, `total_ms`) e códigos de erro reduzidos, sem expor conteúdo de mensagens, tokens ou conversas. Ausência de métrica jamais equivale a zero.
+- Percentis p95 com menos de cinco amostras e p99 com menos de vinte **não são apresentados** como números representativos; `npm run benchmark:live` continua sendo o teste ativo específico, sempre com sessão autorizada.
+- O relatório histórico não promete melhoria de performance por si só: exige comparação entre execuções com mesmos critérios de tamanho de resposta, modelo e modo observador antes de qualquer conclusão.
