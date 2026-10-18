@@ -117,7 +117,8 @@ function updateLiveRun(payload) {
 
 function friendlyError(error) {
   const raw = String(error?.message || error || 'Erro desconhecido');
-  const code = raw.match(/Error: ([a-z0-9_]+)/i)?.[1] || raw;
+  const lastSegment = raw.split(':').at(-1)?.trim() || '';
+  const code = /^[a-z][a-z0-9_]*$/i.test(lastSegment) ? lastSegment : (raw.match(/Error: ([a-z0-9_]+)/i)?.[1] || raw);
   const messages = {
     chatgpt_draft_present: 'Esta conversa já existente tem um rascunho no ChatGPT. Preserve ou apague o texto antes de continuar; ao criar uma nova conversa, o worker prepara um campo vazio.',
     new_chat_composer_unavailable: 'A nova conversa abriu, mas o campo de mensagem do ChatGPT não ficou pronto.',
