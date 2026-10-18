@@ -10,6 +10,7 @@ const SQLITE_OPEN_RETRY_DELAYS_MS = [0, 40, 80, 160, 320, 640, 1280];
 const sqliteOpenWait = new Int32Array(new SharedArrayBuffer(4));
 const PROJECT_MEMORY_CATEGORIES = new Set(['entity','structure','fact','decision','constraint','goal','open_loop','reference']);
 const PROJECT_MEMORY_SOURCE_TYPES = new Set(['manual','message','checkpoint','import','system']);
+export const MESSAGE_PAGE_SIZE = 50;
 
 function isTransientSqliteOpenError(error) {
   const message = String(error?.message || error || '');
@@ -291,11 +292,12 @@ export class Store {
     return this.db.prepare('SELECT draft,draft_revision,draft_updated_at FROM tasks WHERE id=?').get(taskId);
   }
 
-  getTask(id) {
+  getTask(id, { messageLimit = null } = {}) {
     const task = this.db.prepare('SELECT * FROM tasks WHERE id=?').get(id);
     if (!task) return null;
     // One snapshot per view: derived metadata reuses these same canonical reads.
-    const messages = this.messages(id);
+    const page = messageLimit == null ? null : this.messagesPage(id, { limit:messageLimit });
+    const messages = page ? page.messages : this.messages(id);
     const checkpoint = this.latestCheckpoint(id);
     const conversations = this.listConversations(id);
     const projectMemory = this.projectMemorySummary(id);
@@ -303,6 +305,7 @@ export class Store {
     return {
       ...task,
       messages,
+      ...(page ? { message_page:{ has_more:page.has_more, next_cursor:page.next_cursor, page_size:page.page_size } } : {}),
       events: this.events(id, 100),
       checkpoint_record: checkpoint,
       pending_approvals: this.pendingApprovals(id),
@@ -314,7 +317,8 @@ export class Store {
         pending_count: pendingCount
       },
       continuation: this.continuationSummary(id, {
-        task, checkpoint, conversations, projectMemory, pendingCount, totalMessages:messages.length
+        task, checkpoint, conversations, projectMemory, pendingCount,
+        totalMessages:page ? page.total_messages : messages.length
       })
     };
   }
@@ -334,12 +338,51 @@ export class Store {
     return { ...task, conversations:active ? [active] : [] };
   }
 
+  // Immutable keyset cursors use the existing (created_at,id) SQLite ordering.
+  // No separate index, page cache, offset-based scans, or replicated history.
+  encodeMessageCursor(message) {
+    return Buffer.from(JSON.stringify([message.created_at, message.id])).toString('base64url');
+  }
+
+  decodeMessageCursor(cursor) {
+    if (typeof cursor !== 'string' || !/^[A-Za-z0-9_-]{8,512}$/.test(cursor)) throw new Error('invalid_message_cursor');
+    try {
+      const raw = Buffer.from(cursor, 'base64url');
+      const tuple = JSON.parse(raw.toString('utf8'));
+      if (raw.toString('base64url') !== cursor || !Array.isArray(tuple) || tuple.length !== 2 ||
+        typeof tuple[0] !== 'string' || !tuple[0] || tuple[0].length > 64 ||
+        typeof tuple[1] !== 'string' || !tuple[1] || tuple[1].length > 200) throw new Error('invalid_message_cursor');
+      return tuple;
+    } catch { throw new Error('invalid_message_cursor'); }
+  }
+
+  messagesPage(taskId, { before = null, limit = MESSAGE_PAGE_SIZE } = {}) {
+    const size = Number(limit);
+    if (!Number.isSafeInteger(size) || size < 1 || size > 100) throw new Error('invalid_message_page_size');
+    const messages = this.messages(taskId, { before, limit:size + 1 });
+    const hasMore = messages.length > size;
+    const page = hasMore ? messages.slice(1) : messages;
+    return {
+      messages:page,
+      has_more:hasMore,
+      next_cursor:hasMore ? this.encodeMessageCursor(page[0]) : null,
+      page_size:size,
+      total_messages:Number(this.db.prepare('SELECT COUNT(*) AS n FROM messages WHERE task_id=?').get(taskId)?.n || 0)
+    };
+  }
+
   // The canonical message order is shared by full UI history and bounded context.
   // Fetch assets in one batch instead of querying SQLite once per message.
-  messages(taskId, { limit = null } = {}) {
+  messages(taskId, { limit = null, before = null } = {}) {
     const bounded = Number.isSafeInteger(limit) && limit > 0;
+    if (!bounded && before != null) throw new Error('invalid_message_cursor');
+    const cursor = before == null ? null : this.decodeMessageCursor(before);
     const rows = bounded
-      ? this.db.prepare('SELECT id,role,content,created_at FROM messages WHERE task_id=? ORDER BY created_at DESC,id DESC LIMIT ?').all(taskId, limit).reverse()
+      ? cursor
+        ? this.db.prepare(`SELECT id,role,content,created_at FROM messages WHERE task_id=?
+          AND (created_at < ? OR (created_at = ? AND id < ?))
+          ORDER BY created_at DESC,id DESC LIMIT ?`).all(taskId, cursor[0], cursor[0], cursor[1], limit).reverse()
+        : this.db.prepare('SELECT id,role,content,created_at FROM messages WHERE task_id=? ORDER BY created_at DESC,id DESC LIMIT ?').all(taskId, limit).reverse()
       : this.db.prepare('SELECT id,role,content,created_at FROM messages WHERE task_id=? ORDER BY created_at,id').all(taskId);
     if (!rows.length) return [];
     const assets = new Map();

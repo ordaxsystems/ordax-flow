@@ -82,7 +82,14 @@
           </div>
         </header>
         <div id="recoveryBanner" class="recovery hidden"></div>
-        <div id="messages" class="messages"></div>
+        <div id="messages" class="messages" aria-label="Histórico da conversa">
+          <nav id="messageHistoryNav" class="message-history-nav hidden" aria-label="Páginas do histórico">
+            <button id="olderMessages" type="button">← Mensagens anteriores</button>
+            <span id="historyPageStatus" role="status" aria-live="polite"></span>
+            <button id="newerMessages" type="button">Mensagens recentes →</button>
+          </nav>
+          <div id="messageList" class="message-list"></div>
+        </div>
         <div class="composer-wrap">
           <form id="composer" class="composer">
             <textarea id="prompt" rows="1" placeholder="Pergunte, crie ou continue o trabalho…"></textarea>
@@ -180,7 +187,7 @@
 
       <section class="context-section">
         <div class="section-title-row">
-          <span>Conteúdo</span>
+          <span>Conteúdo desta página</span>
           <small id="assetCount">0</small>
         </div>
         <div id="contentAssets" class="content-assets">

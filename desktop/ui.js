@@ -12,6 +12,10 @@ let submittingTaskId = null;
 const draftCache = new Map();
 let draftTimer = null;
 let pendingDraft = null;
+let historyEpoch = 0;
+let historyCursors = [null];
+let historyPageIndex = 0;
+let historyLoading = false;
 
 function flushDraft() {
   clearTimeout(draftTimer);
@@ -225,8 +229,7 @@ function renderMemoryCandidates(task) {
     try {
       const updated = await window.ordax.reviewMemoryCandidate(taskId, item.id, button.dataset.review);
       if (currentTaskId === taskId) {
-        currentTask = updated;
-        renderContext(updated);
+        renderContext(acceptTaskRefresh(updated));
         await loadTasks();
       }
     } catch (error) {
@@ -251,6 +254,79 @@ function renderTaskList() {
 async function loadTasks() {
   allTasks = await window.ordax.listTasks();
   renderTaskList();
+}
+
+function acceptTaskRefresh(updated) {
+  // A memory/title refresh must not silently jump away from an older history page.
+  if (historyPageIndex > 0 && currentTask?.id === updated?.id) {
+    currentTask = { ...updated, messages:currentTask.messages, message_page:currentTask.message_page };
+  } else {
+    currentTask = updated;
+  }
+  return currentTask;
+}
+
+function updateHistoryNav() {
+  const page = currentTask?.message_page;
+  const hasOlder = Boolean(page?.has_more);
+  const hasNewer = historyPageIndex > 0;
+  $('#messageHistoryNav').classList.toggle('hidden', !hasOlder && !hasNewer);
+  $('#olderMessages').disabled = historyLoading || !hasOlder;
+  $('#newerMessages').disabled = historyLoading || !hasNewer;
+  const total = Number(currentTask?.continuation?.total_messages ?? currentTask?.messages?.length ?? 0);
+  $('#historyPageStatus').textContent = historyLoading
+    ? 'Carregando histórico…'
+    : `Página ${historyPageIndex + 1} • ${currentTask?.messages?.length || 0} de ${total} mensagens`;
+}
+
+function renderHistory(task, { reset = false, scrollToLatest = false } = {}) {
+  if (reset) {
+    historyEpoch++;
+    historyCursors = [null];
+    historyPageIndex = 0;
+    historyLoading = false;
+  }
+  $('#messageList').innerHTML = (task.messages || []).map(messageHtml).join('');
+  updateHistoryNav();
+  $('#messages').scrollTop = scrollToLatest ? $('#messages').scrollHeight : 0;
+}
+
+async function changeHistoryPage(direction) {
+  if (!currentTaskId || historyLoading || !currentTask?.message_page) return;
+  const older = direction === 'older';
+  const cursor = older ? currentTask.message_page.next_cursor : historyCursors[historyPageIndex - 1];
+  if (older && !currentTask.message_page.has_more) return;
+  if (!older && historyPageIndex === 0) return;
+  const taskId = currentTaskId;
+  const requestEpoch = historyEpoch;
+  const requestNavigation = navigationEpoch;
+  historyLoading = true;
+  updateHistoryNav();
+  try {
+    const page = await window.ordax.loadMessagePage(taskId, cursor);
+    if (currentTaskId !== taskId || historyEpoch !== requestEpoch || navigationEpoch !== requestNavigation) return;
+    if (older) {
+      historyCursors = historyCursors.slice(0, historyPageIndex + 1);
+      historyCursors.push(cursor);
+      historyPageIndex++;
+    } else {
+      historyPageIndex--;
+    }
+    currentTask = { ...currentTask, messages:page.messages,
+      continuation:{ ...currentTask.continuation, total_messages:page.total_messages },
+      message_page:{ has_more:page.has_more, next_cursor:page.next_cursor, page_size:page.page_size } };
+    renderHistory(currentTask, { scrollToLatest:!older && historyPageIndex === 0 });
+    renderContext(currentTask);
+  } catch (error) {
+    if (currentTaskId === taskId && historyEpoch === requestEpoch) {
+      $('#providerDetail').textContent = friendlyError(error);
+    }
+  } finally {
+    if (currentTaskId === taskId && navigationEpoch === requestNavigation && historyEpoch === requestEpoch) {
+      historyLoading = false;
+      updateHistoryNav();
+    }
+  }
 }
 
 function renderContext(task) {
@@ -291,8 +367,8 @@ function renderContext(task) {
     if (!currentTaskId) return;
     button.disabled = true;
     try {
-      currentTask = await window.ordax.archiveProjectMemory(currentTaskId, button.dataset.archiveMemory);
-      renderContext(currentTask);
+      const updated = await window.ordax.archiveProjectMemory(currentTaskId, button.dataset.archiveMemory);
+      renderContext(acceptTaskRefresh(updated));
       await loadTasks();
     } catch (error) {
       $('#providerDetail').textContent = friendlyError(error);
@@ -346,8 +422,7 @@ async function openTask(id) {
   $('#taskCheckpoint').title = task.checkpoint || '';
   $('#taskId').textContent = task.id;
   $('#workspaceId').textContent = workspace ? `sessão ${workspace.id.slice(-8)}` : '';
-  $('#messages').innerHTML = task.messages.map(messageHtml).join('');
-  $('#messages').scrollTop = $('#messages').scrollHeight;
+  renderHistory(task, { reset:true, scrollToLatest:true });
   renderContext(task);
 
   const recovery = $('#recoveryBanner');
@@ -385,7 +460,7 @@ async function saveTaskRename(event) {
   try {
     const updated = await window.ordax.renameTask(taskId, title);
     if (currentTaskId === taskId) {
-      currentTask = updated;
+      acceptTaskRefresh(updated);
       $('#taskTitle').textContent = updated.title;
       toggleTaskRename(false);
     }
@@ -454,9 +529,8 @@ async function saveMemoryItem(event) {
       })
       : await window.ordax.upsertProjectMemory(taskId, { id:editor.dataset.memoryId || undefined, category, key, content });
     if (currentTaskId === taskId) {
-      currentTask = updated;
       setMemoryEditor(false);
-      renderContext(updated);
+      renderContext(acceptTaskRefresh(updated));
       await loadTasks();
     }
   } catch (error) {
@@ -502,6 +576,8 @@ function setContextOpen(open) {
 }
 
 $('#newTask').addEventListener('click', createTask);
+$('#olderMessages').addEventListener('click', () => changeHistoryPage('older'));
+$('#newerMessages').addEventListener('click', () => changeHistoryPage('newer'));
 $('#renameTask').addEventListener('click', () => toggleTaskRename(true));
 $('#cancelTaskRename').addEventListener('click', () => toggleTaskRename(false));
 $('#renameTaskForm').addEventListener('submit', saveTaskRename);
@@ -523,7 +599,7 @@ $('#scanMemoryCandidates').addEventListener('click', async () => {
   button.disabled = true;
   try {
     const task = await window.ordax.scanMemoryCandidates(taskId);
-    if (currentTaskId === taskId) { currentTask = task; renderContext(task); await loadTasks(); }
+    if (currentTaskId === taskId) { renderContext(acceptTaskRefresh(task)); await loadTasks(); }
   } catch (error) {
     $('#providerDetail').textContent = friendlyError(error);
   } finally {
@@ -584,15 +660,14 @@ $('#composer').addEventListener('submit', async event => {
   input.value = '';
   input.style.height = '';
   $('#draftState').textContent = '';
-  $('#runStatus').textContent = currentTask?.chat_url ? 'Enviando…' : currentTask?.messages?.length ? 'Abrindo nova conversa com memória…' : 'Enviando…';
+  $('#runStatus').textContent = currentTask?.chat_url ? 'Enviando…' : currentTask?.continuation?.total_messages ? 'Abrindo nova conversa com memória…' : 'Enviando…';
   $('#runStatus').classList.remove('hidden');
   $('#send').disabled = true;
   try {
     const { task } = await window.ordax.send({ taskId, content, draftRevision });
     if (currentTaskId === taskId) {
       currentTask = task;
-      $('#messages').innerHTML = task.messages.map(messageHtml).join('');
-      $('#messages').scrollTop = $('#messages').scrollHeight;
+      renderHistory(task, { reset:true, scrollToLatest:true });
       renderContext(task);
       $('#recoveryBanner').classList.add('hidden');
       const version = task.checkpoint_record?.version || 0;
@@ -603,8 +678,10 @@ $('#composer').addEventListener('submit', async event => {
     const message = friendlyError(error);
     if (currentTaskId === taskId) {
       await openTask(taskId).catch(() => null);
-      $('#messages').insertAdjacentHTML('beforeend', `<article class="message error"><div class="message-body"><div class="message-role">Erro</div><div class="message-content">${esc(message)}</div></div></article>`);
-      $('#messages').scrollTop = $('#messages').scrollHeight;
+      if (currentTaskId === taskId) {
+        $('#messageList').insertAdjacentHTML('beforeend', `<article class="message error"><div class="message-body"><div class="message-role">Erro</div><div class="message-content">${esc(message)}</div></div></article>`);
+        $('#messages').scrollTop = $('#messages').scrollHeight;
+      }
     }
   } finally {
     $('#runStatus').classList.add('hidden');

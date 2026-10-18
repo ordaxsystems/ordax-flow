@@ -164,6 +164,30 @@ test('SSOT projections avoid duplicate full-history reads during send and suppor
   assert.doesNotMatch(source, /recentMessages: task\.messages/);
 });
 
+test('history paging uses one SQLite SSOT with bounded renderer pages and stale-response guards', () => {
+  const store = fs.readFileSync(path.join(root, 'src', 'store.mjs'), 'utf8');
+  const html = fs.readFileSync(path.join(root, 'desktop', 'ui.html'), 'utf8');
+  const css = fs.readFileSync(path.join(root, 'desktop', 'ui.css'), 'utf8');
+  assert.match(store, /messagesPage\(taskId,/);
+  assert.match(store, /decodeMessageCursor/);
+  assert.match(store, /created_at < \? OR \(created_at = \? AND id < \?\)/);
+  assert.match(main, /messageLimit:MESSAGE_PAGE_SIZE/);
+  assert.match(main, /ordax:tasks:messages:page/);
+  assert.match(preload, /loadMessagePage/);
+  assert.match(html, /id="messageHistoryNav"/);
+  assert.match(html, /id="olderMessages"/);
+  assert.match(html, /id="newerMessages"/);
+  assert.match(html, /id="messageList"/);
+  assert.match(ui, /changeHistoryPage/);
+  assert.match(ui, /historyCursors/);
+  assert.match(ui, /historyEpoch/);
+  assert.match(ui, /navigationEpoch !== requestNavigation/);
+  assert.match(ui, /acceptTaskRefresh/);
+  assert.doesNotMatch(ui, /\$\('#messages'\)\.innerHTML\s*=/);
+  assert.match(css, /\.message-history-nav\{/);
+  assert.match(html, /Conteúdo desta página/);
+});
+
 test('persistent Task memory can rotate provider conversations without losing the project', () => {
   const store = fs.readFileSync(path.join(root,'src','store.mjs'),'utf8');
   assert.match(store, /task_conversations/);

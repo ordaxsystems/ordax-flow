@@ -115,6 +115,12 @@ button{color:inherit}
 
 .recovery{margin:10px 20px 0;padding:9px 11px;border:1px solid #5b4820;border-radius:10px;background:#201b10;color:#e7c974;font-size:10px;line-height:1.4}
 .messages{flex:1;min-height:0;overflow:auto;padding:24px max(24px,calc((100% - 760px)/2)) 18px;display:flex;flex-direction:column;gap:18px}
+.message-list{display:flex;flex-direction:column;gap:18px;min-height:0}
+.message-history-nav{position:sticky;top:0;z-index:2;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;width:min(100%,760px);margin:0 auto;padding:7px 9px;border:1px solid #283440;border-radius:10px;background:#101720;color:#90a1b4;font-size:10px}
+.message-history-nav button{padding:6px 8px;border-radius:7px;background:#192330;color:#c5d6e8;border:1px solid #354457;cursor:pointer}
+.message-history-nav button:disabled{opacity:.38;cursor:default}
+.message-history-nav.hidden{display:none}
+@media(max-width:620px){.message-history-nav{justify-content:center}.message-history-nav span{order:-1;width:100%;text-align:center}}
 .message{width:min(100%,760px);margin:0 auto;display:grid;grid-template-columns:30px minmax(0,1fr);gap:10px;background:transparent;border:0;padding:0}
 .message::before{content:"O";width:28px;height:28px;border-radius:9px;border:1px solid #283442;background:#111923;display:grid;place-items:center;color:#c5ced9;font-size:10px;font-weight:900;margin-top:1px}
 .message.user::before{content:"V";background:#202b38;color:#fff}

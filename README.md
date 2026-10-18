@@ -1,4 +1,4 @@
-# OrdaX Gratis 0.4.10
+# OrdaX Gratis 0.4.11
 
 Aplicativo desktop Windows independente que usa a sessão normal do ChatGPT Web dentro do próprio processo Electron, com Tasks locais duráveis e uma interface OrdaX própria.
 
@@ -157,6 +157,6 @@ Os testes live requerem o app iniciado com `ORDAX_DESKTOP_DEBUG=1`.
 
 Veja `docs/SSOT.md` para contratos canônicos, projeções de leitura e invariantes contra duplicação; `docs/BENCHMARK.md` para medições e `REFERENCIAS.md` para os projetos estudados.
 
-### Leitura escalável do SQLite (0.4.10)
+### Leitura escalável do SQLite (0.4.10–0.4.11)
 
-A lista lateral entrega só metadados, sem replicar rascunhos/checkpoints/URLs internos. O envio de uma mensagem agora usa um snapshot mínimo para planejamento do provider, sem buscar o histórico inteiro. O pacote de continuidade continua derivado do SQLite e lê apenas as oito mensagens recentes e a memória estruturada aprovada. Imagens são consultadas em lote, não uma por mensagem, com índice em `(task_id, created_at, id)`. A abertura do projeto reaproveita dados já lidos no resumo de continuidade. Nada é copiado para um segundo banco ou cache persistente.
+A lista lateral entrega só metadados, sem replicar rascunhos/checkpoints/URLs internos. A interface mostra uma página de até 50 mensagens por vez, com botões para navegar entre páginas antigas e recentes; a Task completa permanece no mesmo SQLite. A navegação usa cursor estável `(created_at,id)`, não OFFSET nem cache paralelo. O painel de imagens exibe apenas os artefatos da página atual. O envio de uma mensagem usa um snapshot mínimo para planejamento do provider, sem buscar o histórico inteiro. O pacote de continuidade continua derivado do SQLite e lê apenas as oito mensagens recentes e a memória estruturada aprovada. Imagens são consultadas em lote, não uma por mensagem, com índice em `(task_id, created_at, id)`. A abertura do projeto reaproveita dados já lidos no resumo de continuidade. Nada é copiado para um segundo banco ou cache persistente.

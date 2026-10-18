@@ -3,7 +3,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { randomUUID, createHash } from 'node:crypto';
-import { Store } from '../src/store.mjs';
+import { Store, MESSAGE_PAGE_SIZE } from '../src/store.mjs';
 import { planProviderConversation, assessProviderRotation, canonicalProviderChatUrl } from '../src/conversation-policy.mjs';
 import { EmbeddedChatWorker } from './embedded-worker.mjs';
 
@@ -98,15 +98,19 @@ function assetUrl(id) {
   return `ordax-asset://local/${encodeURIComponent(id)}`;
 }
 
+function decorateMessages(messages) {
+  return messages.map(message => ({
+    ...message,
+    assets: (message.assets || []).map(asset => ({ ...asset, url: assetUrl(asset.id) }))
+  }));
+}
+
 function decorateTask(task) {
-  if (!task) return null;
-  return {
-    ...task,
-    messages: task.messages.map(message => ({
-      ...message,
-      assets: (message.assets || []).map(asset => ({ ...asset, url: assetUrl(asset.id) }))
-    }))
-  };
+  return task ? { ...task, messages:decorateMessages(task.messages) } : null;
+}
+
+function getTaskView(id) {
+  return decorateTask(store.getTask(String(id), { messageLimit:MESSAGE_PAGE_SIZE }));
 }
 
 function persistImages(taskId, messageId, images = []) {
@@ -206,7 +210,7 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
     });
     store.finishRun(taskId, runId);
     if (confirmedChatUrl) await worker.showConversation(confirmedChatUrl).catch(() => {});
-    return { result: { ...result, assets }, task: decorateTask(store.getTask(taskId)) };
+    return { result: { ...result, assets }, task:getTaskView(taskId) };
   } catch (error) {
     store.finishRun(taskId, runId, String(error?.message || error));
     throw error;
@@ -277,36 +281,44 @@ ipcMain.on('ordax:worker:stream', (event, snapshot) => {
 ipcMain.handle('ordax:workspace:get', () => store.getWorkspaceSession());
 ipcMain.handle('ordax:tasks:list', () => store.listTasks());
 ipcMain.handle('ordax:tasks:create', (_event, title) => decorateTask(store.createTask(String(title || 'Nova tarefa'))));
-ipcMain.handle('ordax:tasks:get', (_event, id) => decorateTask(store.getTask(String(id))));
-ipcMain.handle('ordax:tasks:rename', (_event, { taskId, title }) =>
-  decorateTask(store.renameTask(String(taskId), title)));
+ipcMain.handle('ordax:tasks:get', (_event, id) => getTaskView(id));
+ipcMain.handle('ordax:tasks:messages:page', (_event, { taskId, before }) => {
+  if (!store.getTaskExecutionSnapshot(String(taskId))) throw new Error('task_not_found');
+  const page = store.messagesPage(String(taskId), { before });
+  return { ...page, messages:decorateMessages(page.messages) };
+});
+ipcMain.handle('ordax:tasks:rename', (_event, { taskId, title }) => {
+  store.renameTask(String(taskId), title);
+  return getTaskView(taskId);
+});
 ipcMain.handle('ordax:tasks:draft:set', (_event, { taskId, content, revision }) =>
   store.setDraft(String(taskId), content, revision));
 ipcMain.handle('ordax:tasks:open', async (_event, id) => {
-  const task = store.getTask(String(id));
+  const task = getTaskView(id);
   if (chatVisible && task?.chat_url) await worker.showConversation(task.chat_url).catch(() => {});
-  return decorateTask(task);
+  return task;
 });
 ipcMain.handle('ordax:tasks:resume-capsule', (_event, id) => store.buildResumeCapsule(String(id)));
 ipcMain.handle('ordax:tasks:rotate-conversation', (_event, id) => {
   if (liveRun) throw new Error('conversation_rotation_during_run');
-  return decorateTask(store.rotateConversation(String(id), 'manual_ui'));
+  store.rotateConversation(String(id), 'manual_ui');
+  return getTaskView(id);
 });
 ipcMain.handle('ordax:tasks:memory:upsert', (_event, { taskId, item }) => {
   store.upsertProjectMemory(String(taskId), { ...(item || {}), source_type:'manual' });
-  return decorateTask(store.getTask(String(taskId)));
+  return getTaskView(taskId);
 });
 ipcMain.handle('ordax:tasks:memory:archive', (_event, { taskId, memoryId }) => {
   store.archiveProjectMemory(String(taskId), String(memoryId));
-  return decorateTask(store.getTask(String(taskId)));
+  return getTaskView(taskId);
 });
 ipcMain.handle('ordax:tasks:memory:candidates:scan', (_event, taskId) => {
   store.memoryCandidates.scan(String(taskId));
-  return decorateTask(store.getTask(String(taskId)));
+  return getTaskView(taskId);
 });
 ipcMain.handle('ordax:tasks:memory:candidates:review', (_event, { taskId, candidateId, action, changes }) => {
   store.memoryCandidates.review(String(taskId), String(candidateId), String(action), changes || {});
-  return decorateTask(store.getTask(String(taskId)));
+  return getTaskView(taskId);
 });
 ipcMain.handle('ordax:provider:status', async () => {
   const base = worker.status();

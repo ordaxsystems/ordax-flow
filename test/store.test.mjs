@@ -175,6 +175,63 @@ test('execution snapshot reflects the same SQLite rotation policy without hydrat
   assert.deepEqual(planProviderConversation(snapshot), planProviderConversation(store.getTask(task.id)));
 });
 
+test('message pages follow canonical keyset order without duplicating history or mixing Tasks', t => {
+  const store = new Store(':memory:');
+  t.after(() => store.close());
+  const task = store.createTask('Histórico extenso');
+  const unrelated = store.createTask('Outro projeto');
+  const insert = store.db.prepare('INSERT INTO messages(id,task_id,role,content,created_at) VALUES(?,?,?,?,?)');
+  const assetInsert = store.db.prepare('INSERT INTO message_assets(id,task_id,message_id,kind,mime_type,local_path,alt,created_at) VALUES(?,?,?,?,?,?,?,?)');
+  store.db.exec('BEGIN');
+  try {
+    for (let i = 0; i < 125; i++) {
+      // All timestamps collide intentionally: id must be a stable tie-breaker.
+      insert.run('msg_' + String(i).padStart(4, '0'), task.id, i % 2 ? 'assistant' : 'user',
+        'Passagem ' + i, '2026-10-01T00:00:00.000Z');
+    }
+    insert.run('msg_unrelated', unrelated.id, 'user', 'Mensagem privada', '2026-10-01T00:00:00.000Z');
+    assetInsert.run('asset_0052',task.id,'msg_0052','image','image/png','/tmp/0052.png','Imagem 52','2026-10-01T00:00:00.000Z');
+    assetInsert.run('asset_0121',task.id,'msg_0121','image','image/png','/tmp/0121.png','Imagem 121','2026-10-01T00:00:00.000Z');
+    store.db.exec('COMMIT');
+  } catch (error) { store.db.exec('ROLLBACK'); throw error; }
+  const complete = store.messages(task.id);
+  const firstView = store.getTask(task.id, { messageLimit:50 });
+  assert.equal(firstView.messages.length, 50);
+  assert.equal(firstView.continuation.total_messages, 125);
+  assert.equal(firstView.message_page.has_more, true);
+  assert.equal(firstView.messages[0].id, 'msg_0075');
+  assert.equal(firstView.messages[49].id, 'msg_0124');
+  assert.equal(firstView.messages.find(message => message.id === 'msg_0121').assets[0].alt, 'Imagem 121');
+  assert.equal(store.getTask(task.id).messages.length, 125); // Existing full SSOT API remains compatible.
+
+  const pages = [];
+  let cursor = null;
+  for (let i = 0; i < 4; i++) {
+    const page = store.messagesPage(task.id, { before:cursor });
+    pages.push(page);
+    assert.equal(page.total_messages, 125);
+    if (!page.has_more) break;
+    cursor = page.next_cursor;
+    assert.ok(cursor);
+  }
+  assert.deepEqual(pages.map(p => p.messages.length), [50,50,25]);
+  assert.deepEqual(pages.map(p => p.has_more), [true,true,false]);
+  assert.equal(pages[1].messages.find(m => m.id === 'msg_0052').assets[0].alt, 'Imagem 52');
+  assert.deepEqual(pages.slice().reverse().flatMap(p => p.messages), complete);
+  assert.equal(pages[2].next_cursor, null);
+  assert.deepEqual(store.messagesPage(task.id, {before:pages[0].next_cursor}).messages, pages[1].messages);
+  assert.ok(pages.every(p => p.messages.every(m => m.task_id == null && m.content !== 'Mensagem privada')));
+  assert.equal(store.messagesPage(unrelated.id).messages.length,1);
+  assert.equal(store.messagesPage(unrelated.id,{before:pages[0].next_cursor}).messages.length,0);
+  assert.throws(() => store.messagesPage(task.id,{ before:'garbage' }), /invalid_message_cursor/);
+  assert.throws(() => store.messagesPage(task.id,{ limit:101 }), /invalid_message_page_size/);
+  assert.throws(() => store.messagesPage(task.id,{ limit:0 }), /invalid_message_page_size/);
+  const stableOlder = store.messagesPage(task.id, { before:pages[0].next_cursor }).messages;
+  store.appendMessage(task.id, 'user', 'Mensagem nova e posterior');
+  assert.deepEqual(store.messagesPage(task.id, { before:pages[0].next_cursor }).messages, stableOlder);
+  assert.equal(store.messagesPage(task.id).total_messages,126);
+});
+
 test('Interrupted run is explicit and resumable after reopen', t => {
   const { dir, dbPath } = tempStore();
   let store = new Store(dbPath);

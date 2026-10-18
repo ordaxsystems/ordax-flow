@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('ordax', {
   createTask: title => ipcRenderer.invoke('ordax:tasks:create', title),
   getTask: id => ipcRenderer.invoke('ordax:tasks:get', id),
   openTask: id => ipcRenderer.invoke('ordax:tasks:open', id),
+  loadMessagePage: (taskId, before) => ipcRenderer.invoke('ordax:tasks:messages:page', { taskId, before }),
   renameTask: (taskId, title) => ipcRenderer.invoke('ordax:tasks:rename', { taskId, title }),
   setDraft: (taskId, content, revision) => ipcRenderer.invoke('ordax:tasks:draft:set', { taskId, content, revision }),
   resumeCapsule: id => ipcRenderer.invoke('ordax:tasks:resume-capsule', id),
