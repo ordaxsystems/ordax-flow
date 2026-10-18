@@ -25,5 +25,6 @@ contextBridge.exposeInMainWorld('ordax', {
   reload: () => ipcRenderer.invoke('ordax:provider:reload'),
   setChatVisible: visible => ipcRenderer.invoke('ordax:chat:visible', visible),
   onRunStarted: callback => ipcRenderer.on('ordax:task:run-started', (_event, payload) => callback(payload)),
+  onTaskStage: callback => ipcRenderer.on('ordax:task:stage', (_event, payload) => callback(payload)),
   onTaskStream: callback => ipcRenderer.on('ordax:task:stream', (_event, payload) => callback(payload))
 });
