@@ -9,7 +9,7 @@ const getJson=url=>new Promise((yes,no)=>http.get(url,res=>{let s='';res.on('dat
   const ws=new WebSocket(target.webSocketDebuggerUrl),pending=new Map();let next=0;
   ws.onmessage=e=>{const ev=JSON.parse(e.data),pair=pending.get(ev.id);if(pair){pending.delete(ev.id);ev.error?pair[1](Error(ev.error.message)):pair[0](ev.result)}};
   await new Promise((yes,no)=>{ws.onopen=yes;ws.onerror=no});
-  const evaluate=expr=>new Promise((yes,no)=>{const id=++next;pending.set(id,[value=>value.exceptionDetails?no(Error(value.exceptionDetails.text)):yes(value.result.value),no]);ws.send(JSON.stringify({id,method:'Runtime.evaluate',params:{expression:expr,returnByValue:true,awaitPromise:true}}))});
+  const evaluate=expr=>new Promise((yes,no)=>{const id=++next;pending.set(id,[value=>value.exceptionDetails?no(Error(value.exceptionDetails.exception?.description || value.exceptionDetails.text)):yes(value.result.value),no]);ws.send(JSON.stringify({id,method:'Runtime.evaluate',params:{expression:expr,returnByValue:true,awaitPromise:true}}))});
   try{
     const result=await evaluate(`(()=>{
       const list=document.querySelector('#messageList'),status=document.querySelector('#runStatus');
