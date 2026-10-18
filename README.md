@@ -1,5 +1,7 @@
 # OrdaX Flow — Client + Hub (desktop legado 0.4.12)
 
+**Integração P0 de identidade:** `src/relay/platform-account.mjs` verifica conta via o endpoint canônico `/v3/product/session` da OrdaX Platform; `src/relay/platform-composition.mjs` exige portas reais de autorização, sessão, projetos, RBAC do Hub, dispatch e idempotência. Testada com Platform HTTP simulada; **produção e login do navegador ainda não conectados**. Nenhuma dependência do OrdaX OS.
+
 **Dois aplicativos, um único gateway de IA:** `apps/flow-client/` é a experiência do usuário; `apps/flow-hub/` é o painel da central e exige RBAC. Ambas as interfaces compartilham o contrato de `src/relay/`, sem replicar identidade, cotas ou histórico. [Arquitetura e status real](docs/FLOW-CLIENT-HUB.md). Os novos shells ainda não têm adapters reais de conta OrdaX, histórico central ou provedor comercial.
 
 O app Electron descrito abaixo é o laboratório 0.4.12, não o Flow Client multiusuário pronto para lançamento.

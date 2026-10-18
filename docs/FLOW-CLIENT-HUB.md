@@ -42,6 +42,17 @@ Fonte: `apps/flow-hub/`, acessível no preview em `/hub`.
 
 Os apps da web necessitam de uma sessão segura de conta OrdaX fornecida por `authenticateRequest`. O adapter de produção deve validar cookie HttpOnly, expiração, origem, CSRF para mutações e sessão; sem ele, rotas protegidas falham como não autenticadas. Acesso por Bearer segue possível para testes/cliente nativo com `authenticate` oficial. Não inserir conta ChatGPT ou API key de modelos no navegador.
 
+## Identidade canônica da Platform — integração P0
+
+O Flow agora possui o adaptador `src/relay/platform-account.mjs`, que consulta **somente** `GET /v3/product/session` da OrdaX Platform para verificar um token Bearer. É o endpoint de identidade do proprietário já existente em `ordax-platform/control-plane/cloudflare/src/product_auth.ts`; o Flow não valida JWT de modo paralelo e não usa tokens OAuth delegados de MCP para conceder ações ou funções administrativas. O adaptador requer origem HTTPS configurada, nega redirects, valida a resposta e expiração, limita o payload e **falha fechado** em erros de rede, JSON inválido e token recusado. HTTP loopback é permitido exclusivamente em testes explicitamente habilitados.
+
+A composição única `src/relay/platform-composition.mjs` une autenticação, RBAC do Hub, projetos, dispatch, recibos idempotentes e arquivos Client/Hub. Todos os adaptadores de sessão web, autorização, projetos, métricas, roteador de modelos e persistência precisam ser fornecidos pela autoridade canônica; **não existem defaults fictícios de produção**. Uma identidade autenticada é apenas um usuário, nunca prova de propriedade de um projeto nem autorização de operador. A sessão de navegador real, com cookie HttpOnly, SameSite, Origin, CSRF e renovação, **continua pendente**: o HTML não cria credenciais ou sessões por conta própria.
+
+### Provas P0
+
+- `node --test test/platform-account.test.mjs test/platform-composition.test.mjs` cobre assinaturas aceitas ou recusadas pela Platform simulada, expiração, falhas de rede, contrato HTTPS, 20 contas/140 mensagens concorrentes, ausência de acesso ao Hub e bloqueio de montagem quando ports obrigatórios faltam.
+- O endpoint proprietário da Platform foi inspecionado no código real; **não foi feita uma chamada credenciada a produção**, nem implantado um novo Worker. O simulador atesta apenas a composição e o isolamento. Para o Flow central, o roteador de IA precisa permanecer independente do runtime Intelligence pertencente ao OrdaX OS; somente identidade e contratos Platform neutros são reutilizados.
+
 ## Gates executados
 
 - `node --test test/flow-apps.test.mjs test/relay.test.mjs`: 8 testes HTTP de separação, RBAC, projeção restrita, roteamento, acesso cruzado e idempotência. Todos aprovados em 18/10/2026.
