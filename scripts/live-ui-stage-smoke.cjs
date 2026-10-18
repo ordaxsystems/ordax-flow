@@ -11,9 +11,9 @@ const getJson=url=>new Promise((yes,no)=>http.get(url,res=>{let s='';res.on('dat
   await new Promise((yes,no)=>{ws.onopen=yes;ws.onerror=no});
   const evaluate=expr=>new Promise((yes,no)=>{const id=++next;pending.set(id,[value=>value.exceptionDetails?no(Error(value.exceptionDetails.exception?.description || value.exceptionDetails.text)):yes(value.result.value),no]);ws.send(JSON.stringify({id,method:'Runtime.evaluate',params:{expression:expr,returnByValue:true,awaitPromise:true}}))});
   try{
-    const result=await evaluate(`(()=>{
+    const result=await evaluate(`(async()=>{ const {renderLiveStage}=await import('./ui-stage.mjs');
       const list=document.querySelector('#messageList'),status=document.querySelector('#runStatus');
-      if(!list||!status||typeof updateLiveStage!=='function'||typeof updateLiveRun!=='function')throw Error('missing_stage_renderer');
+      if(!list||!status)throw Error('missing_stage_renderer');
       const previous={value:status.textContent,hidden:status.classList.contains('hidden')};
       const node=document.createElement('article');node.id='live-ordax-test-stage-renderer';node.className='message assistant live';
       const body=document.createElement('div');body.className='live-content';body.textContent='Preparando…';
@@ -22,10 +22,10 @@ const getJson=url=>new Promise((yes,no)=>http.get(url,res=>{let s='';res.on('dat
       const phases=[];let stable=false;
       try{
         for(const stage of ['health','prepare','baseline','submit','await-response','assets']){
-          updateLiveStage({...event,stage});phases.push({stage,text:body.textContent});
+          renderLiveStage({...event,stage},{getNode:id=>document.getElementById(id),statusElement:status});phases.push({stage,text:body.textContent});
         }
-        updateLiveRun({runId:'ordax-test-stage-renderer',taskId:'test',text:'Resposta de teste (não enviada)',source:'beta',generating:true,submitAttemptAt:1000,at:2000});
-        updateLiveStage({...event,stage:'prepare',at:2500});
+        node.dataset.streamStarted='true';body.textContent='Resposta de teste (não enviada)';
+        renderLiveStage({...event,stage:'prepare',at:2500},{getNode:id=>document.getElementById(id),statusElement:status});
         stable=body.textContent==='Resposta de teste (não enviada)';
       }finally{
         node.remove();status.textContent=previous.value;status.classList.toggle('hidden',previous.hidden);
