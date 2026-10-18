@@ -333,23 +333,30 @@ export class EmbeddedChatWorker {
   }
 
   async #clearNewChatComposer() {
-    const wc = this.view.webContents;
-    const focused = await wc.executeJavaScript(`(() => {
+    // This is called ONLY for an explicit new provider conversation. A hidden
+    // WebContentsView may ignore Chromium keyboard events, even with focus.
+    // execCommand('delete') dispatches a real editing transaction recognized
+    // by the ProseMirror/contenteditable composer. The caller verifies emptiness.
+    const cleared = await this.view.webContents.executeJavaScript(`(() => {
       const input = ${composerExpression()};
       if (!input) return false;
       input.focus();
-      return document.activeElement === input || input.contains(document.activeElement);
+      if ('value' in input) {
+        if (typeof input.setSelectionRange === 'function') {
+          input.setSelectionRange(0, String(input.value || '').length);
+        } else if (typeof input.select === 'function') {
+          input.select();
+        }
+      } else {
+        const selection = window.getSelection();
+        const range = document.createRange();
+        range.selectNodeContents(input);
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }
+      return document.execCommand('delete');
     })()`).catch(() => false);
-    if (!focused) throw new Error('new_chat_composer_focus_failed');
-    try {
-      if (!wc.debugger.isAttached()) wc.debugger.attach('1.3');
-      await wc.debugger.sendCommand('Input.dispatchKeyEvent', { type:'keyDown', key:'a', code:'KeyA', modifiers:2, windowsVirtualKeyCode:65 });
-      await wc.debugger.sendCommand('Input.dispatchKeyEvent', { type:'keyUp', key:'a', code:'KeyA', windowsVirtualKeyCode:65 });
-      await wc.debugger.sendCommand('Input.dispatchKeyEvent', { type:'keyDown', key:'Backspace', code:'Backspace', windowsVirtualKeyCode:8 });
-      await wc.debugger.sendCommand('Input.dispatchKeyEvent', { type:'keyUp', key:'Backspace', code:'Backspace', windowsVirtualKeyCode:8 });
-    } catch {
-      throw new Error('new_chat_composer_clear_failed');
-    }
+    if (!cleared) throw new Error('new_chat_composer_clear_failed');
   }
 
   async #confirmFreshComposer() {
