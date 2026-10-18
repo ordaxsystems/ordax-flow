@@ -31,3 +31,16 @@ test('unchanged typed composer fails closed without automatic resend',async()=>{
   await assert.rejects(()=>submitExactlyOnce({baseline,prompt,fire:async()=>{calls++},readState:async()=>({...baseline,composerText:prompt}),wait:async()=>{},maxChecks:2}),/send_not_observed/);
   assert.equal(calls,1);
 });
+
+import { waitForSubmitControl } from '../src/provider-submit-receipt.mjs';
+test('waits for a React submit button before performing any send',async()=>{
+  let reads=0,attempted=0;
+  const control=await waitForSubmitControl({read:async()=>{reads++;return reads>3?{button:true,x:32,y:12}:{button:false,form:true};},wait:async()=>{},maxChecks:5});
+  attempted++;
+  assert.equal(reads,4);assert.equal(attempted,1);assert.equal(control.x,32);
+});
+test('a missing or disabled button does not trigger Enter or duplicate sending',async()=>{
+  let attempts=0;
+  await assert.rejects(()=>waitForSubmitControl({read:async()=>({button:false,form:true}),wait:async()=>{},maxChecks:3}),/send_control_unavailable/);
+  assert.equal(attempts,0);
+});
