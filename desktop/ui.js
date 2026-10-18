@@ -1,3 +1,4 @@
+import { renderLiveStage } from './ui-stage.mjs';
 const $ = selector => document.querySelector(selector);
 let currentTaskId = null;
 let currentTask = null;
@@ -96,25 +97,8 @@ function appendLiveRun(runId, userMessage) {
   box.scrollTop = box.scrollHeight;
 }
 
-const RUN_STAGE_TEXT = Object.freeze({
-  health:'Verificando sessão do ChatGPT…',
-  prepare:'Preparando conversa do provedor…',
-  baseline:'Preparando observação de resposta…',
-  submit:'Preenchendo e acionando o envio…',
-  'await-response':'Aguardando a resposta do ChatGPT…',
-  assets:'Finalizando e verificando os resultados…'
-});
-
 function updateLiveStage(payload) {
-  const node = document.getElementById(`live-${payload.runId}`);
-  if (!node || node.dataset.streamStarted === 'true') return;
-  const content = node.querySelector('.live-content');
-  const label = RUN_STAGE_TEXT[payload.stage];
-  if (!label) return;
-  content.textContent = label;
-  const elapsed = payload.runStartedAt ? Math.max(0, Math.round((payload.at - payload.runStartedAt) / 1000)) : 0;
-  $('#runStatus').textContent = `${label} • ${elapsed}s desde o início`;
-  $('#runStatus').classList.remove('hidden');
+  renderLiveStage(payload, { getNode:id=>document.getElementById(id), statusElement:$('#runStatus') });
 }
 
 function updateLiveRun(payload) {
