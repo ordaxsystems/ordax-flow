@@ -212,6 +212,12 @@ async function runTask(taskId, prompt, { newSession = false, draftRevision = nul
     if (confirmedChatUrl) await worker.showConversation(confirmedChatUrl).catch(() => {});
     return { result: { ...result, assets }, task:getTaskView(taskId) };
   } catch (error) {
+    if (worker.lastFailureMetrics) {
+      try { store.recordRunMetrics(taskId, runId, observerMode, {
+        ...worker.lastFailureMetrics,
+        runStartedAt:liveRun?.startedAt || null
+      }); } catch { /* preserve original failure */ }
+    }
     store.finishRun(taskId, runId, String(error?.message || error));
     throw error;
   } finally {
@@ -249,6 +255,12 @@ async function createWindow() {
 
   worker = new EmbeddedChatWorker();
   worker.setObserverMode(observerMode);
+  worker.setStageSink(({ stage, at }) => {
+    if (!liveRun || !win || win.isDestroyed()) return;
+    win.webContents.send('ordax:task:stage', {
+      taskId:liveRun.taskId, runId:liveRun.runId, stage, at, runStartedAt:liveRun.startedAt
+    });
+  });
   worker.setFastStreamSink(delta => {
     if (!liveRun || !win || win.isDestroyed()) return;
     win.webContents.send('ordax:task:stream', { taskId:liveRun.taskId, runId:liveRun.runId, ...delta, mirrorAt:Date.now(), runStartedAt:liveRun.startedAt });
