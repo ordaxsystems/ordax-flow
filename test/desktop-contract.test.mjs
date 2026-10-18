@@ -149,6 +149,21 @@ test('project titles can be renamed from the chat header and are persisted in Ta
   assert.match(html, /id="renameTaskForm"/);
 });
 
+test('SSOT projections avoid duplicate full-history reads during send and support bounded context', () => {
+  const source = fs.readFileSync(path.join(root, 'src', 'store.mjs'), 'utf8');
+  assert.match(source, /idx_messages_task_time/);
+  assert.match(source, /SELECT t\.id,t\.title,t\.status,t\.created_at,t\.updated_at/);
+  assert.doesNotMatch(source, /SELECT t\.\*, \(SELECT COUNT\(\*\) FROM task_conversations/);
+  assert.match(source, /getTaskExecutionSnapshot\(taskId\)/);
+  assert.match(main, /store\.getTaskExecutionSnapshot\(taskId\)/);
+  assert.match(main, /conversationPlan\.newSession && task\.has_messages/);
+  assert.match(source, /recentMessages: this\.messages\(taskId, \{ limit: 8 \}\)/);
+  assert.match(source, /snapshot\.totalMessages/);
+  assert.match(source, /SELECT message_id,id,kind,mime_type,alt,width,height,sha256,created_at FROM message_assets/);
+  assert.doesNotMatch(source, /this\.messages\(taskId\)\.slice\(-10\)/);
+  assert.doesNotMatch(source, /recentMessages: task\.messages/);
+});
+
 test('persistent Task memory can rotate provider conversations without losing the project', () => {
   const store = fs.readFileSync(path.join(root,'src','store.mjs'),'utf8');
   assert.match(store, /task_conversations/);

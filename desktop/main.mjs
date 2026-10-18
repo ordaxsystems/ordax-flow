@@ -141,12 +141,12 @@ function persistImages(taskId, messageId, images = []) {
 }
 
 async function runTask(taskId, prompt, { newSession = false, draftRevision = null } = {}) {
-  const task = store.getTask(taskId);
+  const task = store.getTaskExecutionSnapshot(taskId);
   if (!task) throw new Error('task_not_found');
 
   const conversationPlan = planProviderConversation(task, { forceNew:newSession });
-  const needsContinuation = Boolean(conversationPlan.newSession && task.messages.length > 0);
-  const checkpointVersion = task.checkpoint_record?.version || 0;
+  const needsContinuation = Boolean(conversationPlan.newSession && task.has_messages);
+  const checkpointVersion = task.checkpoint_version;
   const providerPrompt = needsContinuation ? store.buildContinuationPrompt(taskId, prompt) : prompt;
   const userMessage = store.appendMessage(taskId, 'user', prompt);
   // The user's text is durable as a message before clearing its pending draft.

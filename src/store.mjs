@@ -67,6 +67,7 @@ export class Store {
         content TEXT NOT NULL,
         created_at TEXT NOT NULL
       );
+      CREATE INDEX IF NOT EXISTS idx_messages_task_time ON messages(task_id, created_at, id);
       CREATE TABLE IF NOT EXISTS message_assets (
         id TEXT PRIMARY KEY,
         task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
@@ -257,7 +258,12 @@ export class Store {
   }
 
   listTasks() {
-    return this.db.prepare(`SELECT t.*, (SELECT COUNT(*) FROM task_conversations c WHERE c.task_id=t.id) AS conversation_count, (SELECT COUNT(*) FROM project_memory_candidates c WHERE c.task_id=t.id AND c.status='pending') AS pending_memory_count FROM tasks t ORDER BY updated_at DESC`).all();
+    // Navigation needs metadata only. Do not clone drafts, checkpoints or provider
+    // URLs for every item of a potentially huge sidebar.
+    return this.db.prepare(`SELECT t.id,t.title,t.status,t.created_at,t.updated_at,
+      (SELECT COUNT(*) FROM task_conversations c WHERE c.task_id=t.id) AS conversation_count,
+      (SELECT COUNT(*) FROM project_memory_candidates c WHERE c.task_id=t.id AND c.status='pending') AS pending_memory_count
+      FROM tasks t ORDER BY t.updated_at DESC`).all();
   }
 
   renameTask(taskId, title) {
@@ -288,33 +294,66 @@ export class Store {
   getTask(id) {
     const task = this.db.prepare('SELECT * FROM tasks WHERE id=?').get(id);
     if (!task) return null;
+    // One snapshot per view: derived metadata reuses these same canonical reads.
+    const messages = this.messages(id);
+    const checkpoint = this.latestCheckpoint(id);
+    const conversations = this.listConversations(id);
+    const projectMemory = this.projectMemorySummary(id);
+    const pendingCount = this.memoryCandidates.pendingCount(id);
     return {
       ...task,
-      messages: this.messages(id),
+      messages,
       events: this.events(id, 100),
-      checkpoint_record: this.latestCheckpoint(id),
+      checkpoint_record: checkpoint,
       pending_approvals: this.pendingApprovals(id),
-      conversations: this.listConversations(id),
+      conversations,
       project_memory: {
         items: this.listProjectMemory(id),
-        summary: this.projectMemorySummary(id),
+        summary: projectMemory,
         candidates: this.memoryCandidates.list(id),
-        pending_count: this.memoryCandidates.pendingCount(id)
+        pending_count: pendingCount
       },
-      continuation: this.continuationSummary(id)
+      continuation: this.continuationSummary(id, {
+        task, checkpoint, conversations, projectMemory, pendingCount, totalMessages:messages.length
+      })
     };
   }
 
-  messages(taskId) {
-    const rows = this.db.prepare('SELECT id,role,content,created_at FROM messages WHERE task_id=? ORDER BY created_at,id').all(taskId);
-    return rows.map(row => ({ ...row, assets: this.assetsForMessage(row.id) }));
+  // Execution reads only the fields required by the provider conversation policy.
+  // Messages, checkpoints and conversation history remain canonical in SQLite.
+  getTaskExecutionSnapshot(taskId) {
+    const task = this.db.prepare(`SELECT t.id,t.chat_url,
+      EXISTS(SELECT 1 FROM messages m WHERE m.task_id=t.id) AS has_messages,
+      COALESCE((SELECT MAX(version) FROM checkpoints c WHERE c.task_id=t.id),0) AS checkpoint_version
+      FROM tasks t WHERE t.id=?`).get(taskId);
+    if (!task) return null;
+    const active = this.db.prepare(`SELECT c.*,
+      (SELECT COUNT(*) FROM conversation_completed_runs r WHERE r.conversation_id=c.id) AS completed_turns
+      FROM task_conversations c WHERE c.task_id=? AND c.status='active'
+      ORDER BY c.sequence DESC LIMIT 1`).get(taskId);
+    return { ...task, conversations:active ? [active] : [] };
   }
 
-  assetsForMessage(messageId) {
-    return this.db.prepare(`
-      SELECT id,kind,mime_type,alt,width,height,sha256,created_at
-      FROM message_assets WHERE message_id=? ORDER BY created_at,id
-    `).all(messageId).map(asset => ({ ...asset, url: `/api/assets/${encodeURIComponent(asset.id)}` }));
+  // The canonical message order is shared by full UI history and bounded context.
+  // Fetch assets in one batch instead of querying SQLite once per message.
+  messages(taskId, { limit = null } = {}) {
+    const bounded = Number.isSafeInteger(limit) && limit > 0;
+    const rows = bounded
+      ? this.db.prepare('SELECT id,role,content,created_at FROM messages WHERE task_id=? ORDER BY created_at DESC,id DESC LIMIT ?').all(taskId, limit).reverse()
+      : this.db.prepare('SELECT id,role,content,created_at FROM messages WHERE task_id=? ORDER BY created_at,id').all(taskId);
+    if (!rows.length) return [];
+    const assets = new Map();
+    // The bounded continuation path needs at most eight messages. For full history,
+    // task-scoped assets remain a single indexed query regardless of message count.
+    const assetRows = bounded
+      ? this.db.prepare(`SELECT message_id,id,kind,mime_type,alt,width,height,sha256,created_at FROM message_assets
+          WHERE message_id IN (${rows.map(() => '?').join(',')}) ORDER BY created_at,id`).all(...rows.map(row => row.id))
+      : this.db.prepare('SELECT message_id,id,kind,mime_type,alt,width,height,sha256,created_at FROM message_assets WHERE task_id=? ORDER BY created_at,id').all(taskId);
+    for (const { message_id, ...asset } of assetRows) {
+      if (!assets.has(message_id)) assets.set(message_id, []);
+      assets.get(message_id).push({ ...asset, url: `/api/assets/${encodeURIComponent(asset.id)}` });
+    }
+    return rows.map(row => ({ ...row, assets: assets.get(row.id) || [] }));
   }
 
   getAsset(id) { return this.db.prepare('SELECT * FROM message_assets WHERE id=?').get(id) || null; }
@@ -460,34 +499,36 @@ export class Store {
     return this.getTask(taskId);
   }
 
-  continuationSummary(taskId) {
-    const task = this.db.prepare('SELECT id,title,checkpoint,chat_url FROM tasks WHERE id=?').get(taskId);
+  continuationSummary(taskId, snapshot = {}) {
+    const task = snapshot.task || this.db.prepare('SELECT id,title,checkpoint,chat_url FROM tasks WHERE id=?').get(taskId);
     if (!task) return null;
-    const checkpoint = this.latestCheckpoint(taskId);
-    const recent = this.messages(taskId).slice(-10);
-    const conversations = this.listConversations(taskId);
-    const projectMemory = this.projectMemorySummary(taskId);
+    const checkpoint = snapshot.checkpoint === undefined ? this.latestCheckpoint(taskId) : snapshot.checkpoint;
+    const totalMessages = snapshot.totalMessages ?? Number(this.db.prepare('SELECT COUNT(*) AS n FROM messages WHERE task_id=?').get(taskId)?.n || 0);
+    const conversations = snapshot.conversations || this.listConversations(taskId);
+    const projectMemory = snapshot.projectMemory || this.projectMemorySummary(taskId);
     return {
       checkpoint_version: checkpoint?.version || 0,
       checkpoint_summary: checkpoint?.summary || task.checkpoint || '',
-      recent_message_count: recent.length,
-      total_messages: Number(this.db.prepare('SELECT COUNT(*) AS n FROM messages WHERE task_id=?').get(taskId)?.n || 0),
+      recent_message_count: Math.min(totalMessages, 10),
+      total_messages: totalMessages,
       conversation_count: conversations.length,
       structured_memory_count: projectMemory.total,
-      pending_memory_candidates: this.memoryCandidates.pendingCount(taskId),
+      pending_memory_candidates: snapshot.pendingCount ?? this.memoryCandidates.pendingCount(taskId),
       structured_memory_by_category: projectMemory.by_category,
       active_conversation: conversations.find(row => row.status === 'active') || null
     };
   }
 
   buildContinuationPrompt(taskId, prompt) {
-    const task = this.getTask(taskId);
+    // Bounded projection of the SAME SQLite SSOT, never an independent cache.
+    // Avoid loading every message, event, candidate and conversation on each send.
+    const task = this.db.prepare('SELECT id,title,checkpoint FROM tasks WHERE id=?').get(taskId);
     if (!task) return String(prompt || '');
     return buildProjectContinuation({
       title: task.title,
-      checkpoint: task.checkpoint_record?.summary || task.checkpoint,
-      memoryItems: task.project_memory?.items || [],
-      recentMessages: task.messages,
+      checkpoint: this.latestCheckpoint(taskId)?.summary || task.checkpoint,
+      memoryItems: this.listProjectMemory(taskId),
+      recentMessages: this.messages(taskId, { limit: 8 }),
       request: prompt
     });
   }

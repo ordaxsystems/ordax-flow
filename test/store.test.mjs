@@ -56,6 +56,10 @@ test('per-Task drafts persist across restart, reject stale saves and never enter
   assert.equal(store.getTask(first.id).draft, 'Texto novo');
   assert.equal(store.getTask(first.id).draft_revision, 3);
   assert.equal(store.getTask(second.id).draft, 'Outra tarefa');
+  const navigation = store.listTasks();
+  assert.equal(navigation.length, 2);
+  assert.ok(navigation.every(row => !('draft' in row) && !('checkpoint' in row) && !('chat_url' in row)));
+  assert.ok(navigation.every(row => 'status' in row && 'title' in row && 'conversation_count' in row && 'pending_memory_count' in row));
   assert.equal(store.getTask(first.id).updated_at, originalTimestamp);
   assert.deepEqual(store.listTasks().map(task => task.id), originalOrder);
   assert.doesNotMatch(store.buildContinuationPrompt(first.id, 'Continue'), /Texto novo/);
@@ -91,6 +95,84 @@ test('project rename updates navigation title without touching draft or losing h
   assert.throws(() => store.renameTask(task.id, '   '), /invalid_task_title/);
   assert.throws(() => store.renameTask(task.id, 'z'.repeat(141)), /invalid_task_title/);
   assert.throws(() => store.renameTask('task_missing', 'Valid'), /task_not_found/);
+});
+
+test('bounded continuity uses the canonical message order and keeps image references without full history reads', t => {
+  const { dir, dbPath } = tempStore();
+  const store = new Store(dbPath);
+  cleanup(t, dir, () => store);
+  const task = store.createTask('Pesquisa persistente');
+  const insert = store.db.prepare('INSERT INTO messages(id,task_id,role,content,created_at) VALUES(?,?,?,?,?)');
+  const image = store.db.prepare('INSERT INTO message_assets(id,task_id,message_id,kind,mime_type,local_path,alt,created_at) VALUES(?,?,?,?,?,?,?,?)');
+  store.db.exec('BEGIN');
+  try {
+    // Deliberate timestamp ties exercise the existing (created_at,id) contract.
+    for (let i = 0; i < 320; i++) {
+      const messageId = `msg_${String(i).padStart(4, '0')}`;
+      insert.run(messageId, task.id, i % 2 ? 'assistant' : 'user', `Marcador ${i}`, '2026-10-17T20:00:00.000Z');
+      if (i === 314 || i === 319) {
+        image.run(`asset_${i}`, task.id, messageId, 'image', 'image/png', `image_${i}.png`, `Imagem ${i}`, '2026-10-17T20:00:00.000Z');
+      }
+    }
+    store.db.exec('COMMIT');
+  } catch (error) { store.db.exec('ROLLBACK'); throw error; }
+
+  const full = store.messages(task.id);
+  assert.equal(full.length, 320);
+  assert.deepEqual(store.messages(task.id, { limit:8 }), full.slice(-8));
+  assert.equal(full[314].assets[0].alt, 'Imagem 314');
+  assert.equal(full[319].assets[0].alt, 'Imagem 319');
+  const expected = store.buildContinuationPrompt(task.id, 'Continuar pesquisa');
+  assert.match(expected, /Marcador 319/);
+  assert.match(expected, /ARTEFATO image: Imagem 319/);
+  assert.doesNotMatch(expected, /Marcador 22(?:0|1)/);
+  const originalMessages = store.messages;
+  const originalGetTask = store.getTask;
+  store.messages = (id, options) => {
+    assert.equal(id, task.id);
+    assert.equal(options?.limit, 8);
+    return originalMessages.call(store, id, options);
+  };
+  store.getTask = () => { throw new Error('full_task_hydration_forbidden'); };
+  assert.equal(store.buildContinuationPrompt(task.id, 'Continuar pesquisa'), expected);
+  assert.equal(store.continuationSummary(task.id).total_messages, 320);
+  assert.equal(store.continuationSummary(task.id).recent_message_count, 10);
+  assert.equal(store.buildContinuationPrompt('task_missing', 'Inalterado'), 'Inalterado');
+  const queryPlan = store.db.prepare('EXPLAIN QUERY PLAN SELECT id FROM messages WHERE task_id=? ORDER BY created_at DESC,id DESC LIMIT 8').all(task.id);
+  assert.ok(queryPlan.some(row => String(row.detail).includes('idx_messages_task_time')));
+});
+
+test('execution snapshot reflects the same SQLite rotation policy without hydrating a full Task', t => {
+  const store = new Store(':memory:');
+  t.after(() => store.close());
+  const task = store.createTask('Continuidade longa');
+  let snapshot = store.getTaskExecutionSnapshot(task.id);
+  assert.equal(snapshot.has_messages, 0);
+  assert.equal(snapshot.checkpoint_version, 0);
+  assert.deepEqual(planProviderConversation(snapshot), planProviderConversation(store.getTask(task.id)));
+  store.appendMessage(task.id, 'user', 'Primeira etapa');
+  store.checkpoint(task.id, 'Checkpoint de versão 1');
+  store.setChatUrl(task.id, 'https://chatgpt.com/c/segment-a');
+  const failed = store.startRun(task.id);
+  store.finishRun(task.id, failed, 'response_not_observed');
+  for (let i = 0; i < SUCCESSFUL_TURNS_PER_SEGMENT; i++) {
+    const run = store.startRun(task.id);
+    store.finishRun(task.id, run);
+  }
+  const fullPlan = planProviderConversation(store.getTask(task.id));
+  assert.equal(fullPlan.automaticRotation, true);
+  const original = store.getTask;
+  store.getTask = () => { throw new Error('full_task_hydration_forbidden'); };
+  snapshot = store.getTaskExecutionSnapshot(task.id);
+  assert.equal(snapshot.has_messages, 1);
+  assert.equal(snapshot.checkpoint_version, 1);
+  assert.deepEqual(planProviderConversation(snapshot), fullPlan);
+  assert.equal(store.getTaskExecutionSnapshot('task_missing'), null);
+  store.getTask = original;
+  store.rotateConversation(task.id);
+  snapshot = store.getTaskExecutionSnapshot(task.id);
+  assert.equal(snapshot.chat_url, null);
+  assert.deepEqual(planProviderConversation(snapshot), planProviderConversation(store.getTask(task.id)));
 });
 
 test('Interrupted run is explicit and resumable after reopen', t => {
