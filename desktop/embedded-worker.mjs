@@ -1,5 +1,6 @@
 import { WebContentsView, session } from 'electron';
 import { assertProviderDraftAllowed, ensureEmptyNewComposer } from '../src/provider-composer-transition.mjs';
+import { submitExactlyOnce } from '../src/provider-submit-receipt.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -513,7 +514,7 @@ export class EmbeddedChatWorker {
     const initial = await this.#waitForComposer();
     if (initial.text.trim()) throw new Error('chatgpt_draft_present');
 
-    const beforeUserCount = await wc.executeJavaScript(`(() => document.querySelectorAll('[data-message-role="user"],[data-message-author-role="user"],[data-message-author="user"],[data-user-message-bubble="true"]').length)()`).catch(() => 0);
+    const baseline = await this.#submissionState();
     const prepared = await wc.executeJavaScript(`(() => {
       const sels = ${JSON.stringify(selectors.composer)};
       const input = ${composerExpression()};
@@ -538,76 +539,70 @@ export class EmbeddedChatWorker {
     }
     if (!recognized) throw new Error('composer_input_not_recognized');
 
-    const observeSent = async attempts => {
-      for (let i = 0; i < attempts; i++) {
-        await sleep(100);
-        const sent = await wc.executeJavaScript(`(() => {
-          const composer = ${composerExpression()};
-          const text = composer ? ('value' in composer ? composer.value : (composer.innerText || composer.textContent || '')) : '';
-          const body = document.body?.innerText || '';
-          const userCount = document.querySelectorAll('[data-message-role=\"user\"],[data-message-author-role=\"user\"],[data-message-author=\"user\"],[data-user-message-bubble=\"true\"]').length;
-          return { empty:!String(text||'').trim(), promptVisible:body.includes(${JSON.stringify(prompt)}), userCount }; 
-        })()`).catch(() => ({ empty:false, promptVisible:false, userCount:0 }));
-        if (sent.empty && (sent.userCount > beforeUserCount || sent.promptVisible || this.streamContext?.providerRequestSeenAt)) return true;
-      }
-      return false;
-    };
-
-    const submitState = await wc.executeJavaScript(`(() => {
+    // Select one legitimate submit control; do not perform multiple
+    // fallbacks after an ambiguous response. Electron CDP dispatches a trusted
+    // browser input event, unlike element.click()/form.requestSubmit().
+    const target = await wc.executeJavaScript(`(() => {
       const input = ${composerExpression()};
       const form = input?.closest('form');
       const scope = form || document;
-      const send = ${JSON.stringify(selectors.send)}.flatMap(selector => Array.from(scope.querySelectorAll(selector))).find(el => el && !el.disabled && el.getAttribute('aria-disabled') !== 'true' && el.getClientRects().length) || null;
-      const r = send?.getBoundingClientRect();
-      return { form:!!form, button:!!send, x:r? r.left+r.width/2:null, y:r? r.top+r.height/2:null };
-    })()`).catch(() => ({ form:false, button:false, x:null, y:null }));
+      const selectors = ${JSON.stringify(selectors.send)};
+      const matches = selectors.flatMap(selector => Array.from(scope.querySelectorAll(selector)));
+      const button = matches.find(el => el && !el.disabled && el.getAttribute('aria-disabled') !== 'true' && el.getClientRects().length)
+        || form?.querySelector('button[type="submit"]:not([disabled])') || null;
+      const rect = button?.getBoundingClientRect();
+      return { button:!!button, form:!!form, x:rect?.left + rect?.width / 2, y:rect?.top + rect?.height / 2 };
+    })()`).catch(() => ({button:false,form:false}));
+    if (!target.button && !target.form) throw new Error('send_control_unavailable');
+    if (target.button && (!Number.isFinite(target.x) || !Number.isFinite(target.y))) throw new Error('send_control_unavailable');
 
-    if (submitState.button) {
-      if (this.streamContext && !this.streamContext.submitAttemptAt) this.streamContext.submitAttemptAt = Date.now();
-      await wc.executeJavaScript(`(() => {
-        const input = ${composerExpression()};
-        const form = input?.closest('form');
-        const scope = form || document;
-        const send = ${JSON.stringify(selectors.send)}.flatMap(selector => Array.from(scope.querySelectorAll(selector))).find(el => el && !el.disabled && el.getAttribute('aria-disabled') !== 'true' && el.getClientRects().length) || null;
-        if (!send) return false; send.click(); return true;
-      })()`).catch(() => false);
-      if (await observeSent(18)) { if (this.streamContext) this.streamContext.submittedAt = Date.now(); return; }
+    const fire = async () => {
+      if (this.streamContext) this.streamContext.submitAttemptAt = Date.now();
+      if (target.button) {
+        await wc.debugger.sendCommand('Input.dispatchMouseEvent', { type:'mouseMoved', x:target.x, y:target.y });
+        await wc.debugger.sendCommand('Input.dispatchMouseEvent', { type:'mousePressed', x:target.x, y:target.y, button:'left', clickCount:1 });
+        await wc.debugger.sendCommand('Input.dispatchMouseEvent', { type:'mouseReleased', x:target.x, y:target.y, button:'left', clickCount:1 });
+      } else {
+        // Keyboard activation is a single alternative ONLY when no submit button
+        // exists; it is never used as a retry after another submission attempt.
+        await wc.debugger.sendCommand('Input.dispatchKeyEvent', { type:'rawKeyDown', key:'Enter', code:'Enter', windowsVirtualKeyCode:13, nativeVirtualKeyCode:13 });
+        await wc.debugger.sendCommand('Input.dispatchKeyEvent', { type:'keyUp', key:'Enter', code:'Enter', windowsVirtualKeyCode:13, nativeVirtualKeyCode:13 });
+      }
+    };
+
+    try {
+      await submitExactlyOnce({
+        fire,
+        readState: () => this.#submissionState(),
+        wait: () => sleep(250),
+        baseline,
+        prompt,
+        maxChecks:80
+      });
+    } catch (error) {
+      // A provider verification/login gate supersedes a generic lack of receipt.
+      // Never retry after any submit attempt, even when the result is uncertain.
+      const health = await this.health().catch(() => null);
+      if (health?.verification_required) throw new Error('chatgpt_verification_required');
+      if (health?.auth_state === 'authenticating') throw new Error('chatgpt_authentication_in_progress');
+      if (health?.auth_state === 'anonymous') throw new Error('chatgpt_login_required');
+      throw error;
     }
+    if (this.streamContext) this.streamContext.submittedAt = Date.now();
+  }
 
-    if (submitState.form) {
-      if (this.streamContext && !this.streamContext.submitAttemptAt) this.streamContext.submitAttemptAt = Date.now();
-      await wc.executeJavaScript(`(() => {
-        const input = ${composerExpression()};
-        const form = input?.closest('form');
-        const send = form ? ${JSON.stringify(selectors.send)}.flatMap(selector => Array.from(form.querySelectorAll(selector))).find(el => el && !el.disabled && el.getAttribute('aria-disabled') !== 'true' && el.getClientRects().length) : null;
-        if (!form) return false;
-        if (typeof form.requestSubmit === 'function') form.requestSubmit(send || undefined);
-        else form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));
-        return true;
-      })()`).catch(() => false);
-      if (await observeSent(18)) { if (this.streamContext) this.streamContext.submittedAt = Date.now(); return; }
-    }
-
-    if (submitState.button && Number.isFinite(submitState.x) && Number.isFinite(submitState.y)) {
-      await wc.debugger.sendCommand('Input.dispatchMouseEvent', { type:'mousePressed', x:submitState.x, y:submitState.y, button:'left', clickCount:1 });
-      await wc.debugger.sendCommand('Input.dispatchMouseEvent', { type:'mouseReleased', x:submitState.x, y:submitState.y, button:'left', clickCount:1 });
-      if (await observeSent(18)) { if (this.streamContext) this.streamContext.submittedAt = Date.now(); return; }
-    }
-
-    await wc.debugger.sendCommand('Input.dispatchKeyEvent', { type:'rawKeyDown', key:'Enter', code:'Enter', windowsVirtualKeyCode:13, nativeVirtualKeyCode:13 });
-    await wc.debugger.sendCommand('Input.dispatchKeyEvent', { type:'keyUp', key:'Enter', code:'Enter', windowsVirtualKeyCode:13, nativeVirtualKeyCode:13 });
-    if (await observeSent(18)) return;
-
-    const gate = await wc.executeJavaScript(`(() => {
-      const body=document.body?.innerText||'';
+  async #submissionState() {
+    return this.view.webContents.executeJavaScript(`(() => {
+      const composer = ${composerExpression()};
+      const text = composer ? ('value' in composer ? composer.value : (composer.innerText || composer.textContent || '')) : '';
+      const userNodes = [...document.querySelectorAll('[data-message-role="user"],[data-message-author-role="user"],[data-message-author="user"],[data-user-message-bubble="true"]')];
       return {
-        login:/Entre ou cadastre-se|Continuar com o Google|Continue with Google|Log in or sign up/i.test(body),
-        verification:/Ocorreu um erro durante a verificação|verification.*(?:failed|error)|verificação.*erro/i.test(body)
+        composerText:String(text || ''),
+        userCount:userNodes.length,
+        latestUserText:String(userNodes.at(-1)?.innerText || userNodes.at(-1)?.textContent || ''),
+        url:location.href
       };
-    })()`).catch(() => ({ login:false, verification:false }));
-    if (gate.verification) throw new Error('chatgpt_verification_required');
-    if (gate.login) throw new Error('chatgpt_login_required');
-    throw new Error('send_not_observed');
+    })()`);
   }
 
   async #fetchImages(images = []) {
