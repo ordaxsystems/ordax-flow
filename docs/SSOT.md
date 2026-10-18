@@ -1,4 +1,6 @@
-# SSOT e limites de leitura — OrdaX Grátis
+# SSOT e limites de leitura — OrdaX Grátis (legado desktop)
+
+A arquitetura central futura e a separação de produtos são canônicas em [FLOW-ARCHITECTURE.md](FLOW-ARCHITECTURE.md). Esta página documenta apenas o armazenamento local legado Electron; não representa a base central multiusuário.
 
 ## Autoridade dos dados
 

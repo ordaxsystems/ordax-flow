@@ -1,4 +1,6 @@
-# OrdaX Gratis 0.4.11
+# OrdaX Flow (OrdaX Grátis 0.4.12 — versão de transição)
+
+O repositório privado `ordaxsystems/ordax-flow` é o remoto canônico do produto Flow. A versão desktop 0.4.12 é o **legado de testes** com ChatGPT Web; o Flow multiusuário da central deve evoluir para API autorizada, conta OrdaX e quotas individuais, conforme `docs/FLOW-ARCHITECTURE.md`. Nenhuma dependência do OrdaX OS ou do Studio.
 
 Aplicativo desktop Windows independente que usa a sessão normal do ChatGPT Web dentro do próprio processo Electron, com Tasks locais duráveis e uma interface OrdaX própria.
 
@@ -131,12 +133,15 @@ Os E2E de aceitação operam **somente pela UI do OrdaX** (`desktop/ui.html`). M
 - `npm run test:live:image` — E2E real de imagem pela UI OrdaX.
 - `npm run test:live:continuity` — prova continuidade entre duas conversas internas diferentes usando memória local da mesma Task.
 - `npm run test:live:restart` — valida persistência/reabertura pela UI OrdaX.
+- `npm run test:live:history` — E2E de 125 mensagens em três páginas, via botões da UI, com fixture SQLite isolada removida ao final.
 - `npm run benchmark` — lê as métricas recentes persistidas.
 - `npm run benchmark:live` — executa várias amostras pela UI e calcula min/média/p50/p95/p99.
 - `npm run test:live:stream` — exige streaming incremental longo e monotônico.
 - `npm run build:win` — gera executável portátil Windows x64.
 
-Os testes live requerem o app iniciado com `ORDAX_DESKTOP_DEBUG=1`.
+Os testes live requerem o app iniciado com `ORDAX_DESKTOP_DEBUG=1`. Os scripts de aceite esperam uma **Task nova e identificada** antes de enviar prompts. Para paginação, somente a preparação da fixture grava 125 mensagens sintéticas numa Task de teste isolada no SQLite; a navegação e as verificações acontecem pela UI, e a fixture é removida no encerramento.
+
+Os resultados reais e os gates ainda pendentes estão documentados em `docs/E2E-2026-10-17.md`.
 
 ## Gates comprovados nesta linha
 

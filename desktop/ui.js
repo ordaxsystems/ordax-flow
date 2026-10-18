@@ -89,7 +89,9 @@ function messageHtml(message) {
 
 function appendLiveRun(runId, userMessage) {
   const box = $('#messages');
-  box.insertAdjacentHTML('beforeend', messageHtml({ role:'user', content:userMessage.content, assets:[] }) +
+  // Temporary messages belong to the same replaceable page as the durable history.
+  // Appending to #messages would leave orphan live nodes after renderHistory().
+  $('#messageList').insertAdjacentHTML('beforeend', messageHtml({ role:'user', content:userMessage.content, assets:[] }) +
     `<article class="message assistant live" id="live-${esc(runId)}"><div class="message-body"><div class="message-role">ChatGPT</div><div class="message-content live-content">Preparando…</div></div></article>`);
   box.scrollTop = box.scrollHeight;
 }

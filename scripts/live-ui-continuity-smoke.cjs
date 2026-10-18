@@ -17,9 +17,10 @@ const getJson=url=>new Promise((resolve,reject)=>http.get(url,r=>{let d='';r.on(
   const waitFor=async(fn,attempts=1200,delay=50)=>{for(let i=0;i<attempts;i++){const value=await fn();if(value)return value;await sleep(delay)}return null};
   const providerReady=await waitFor(()=>ev(`(async()=>{const s=await window.ordax.providerStatus();return Boolean(s?.connected&&s?.composer_ready&&!s?.verification_required)})()`),600,50);
   if(!providerReady)throw new Error('provider_not_ready');
+  const previousTaskId=await ev(`document.querySelector('#taskId')?.textContent||''`);
   await ev(`document.querySelector('#newTask').click();true`);
-  await waitFor(()=>ev(`!document.querySelector('#taskPanel').classList.contains('hidden')`),200,50);
-  const taskId=await ev(`document.querySelector('#taskId').textContent`);
+  const taskId=await waitFor(()=>ev(`(()=>{const id=document.querySelector('#taskId')?.textContent||'';return id&&id!==${JSON.stringify(previousTaskId)}&&!document.querySelector('#taskPanel').classList.contains('hidden')?id:null})()`),200,50);
+  if(!taskId)throw new Error('new_task_not_ready');
   const send=async prompt=>{
     await ev(`(()=>{const p=document.querySelector('#prompt');p.value=${JSON.stringify(prompt)};p.dispatchEvent(new Event('input',{bubbles:true}));document.querySelector('#composer').requestSubmit();return true})()`);
   };

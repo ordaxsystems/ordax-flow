@@ -181,11 +181,27 @@ test('history paging uses one SQLite SSOT with bounded renderer pages and stale-
   assert.match(ui, /changeHistoryPage/);
   assert.match(ui, /historyCursors/);
   assert.match(ui, /historyEpoch/);
+  // Live placeholder is inside the paginated message list and disappears when final history renders.
+  assert.match(ui, /function appendLiveRun[\s\S]*?\$\('#messageList'\)\.insertAdjacentHTML\('beforeend'/);
+  assert.doesNotMatch(ui, /\$\('#messages'\)\.insertAdjacentHTML\('beforeend', messageHtml/);
   assert.match(ui, /navigationEpoch !== requestNavigation/);
   assert.match(ui, /acceptTaskRefresh/);
   assert.doesNotMatch(ui, /\$\('#messages'\)\.innerHTML\s*=/);
   assert.match(css, /\.message-history-nav\{/);
   assert.match(html, /Conteúdo desta página/);
+  const historySmoke = fs.readFileSync(path.join(root, 'scripts', 'live-ui-history-smoke.cjs'), 'utf8');
+  assert.match(historySmoke, /acquireE2ELock\('history-smoke'\)/);
+  assert.match(historySmoke, /expectPage\(3, '000', '024', 25\)/);
+  assert.match(historySmoke, /DELETE FROM tasks WHERE id=\?/);
+});
+
+test('live E2E scripts wait for a fresh Task ID before sending test prompts', () => {
+  for (const file of ['live-ui-text-smoke.cjs','live-ui-image-smoke.cjs','live-ui-continuity-smoke.cjs']) {
+    const source = fs.readFileSync(path.join(root,'scripts',file),'utf8');
+    assert.match(source, /previousTaskId/);
+    assert.match(source, /new_task_not_ready/);
+    assert.doesNotMatch(source, /if\(await (?:evalJs|ev)\(`!document\.querySelector\('#taskPanel'\)/);
+  }
 });
 
 test('persistent Task memory can rotate provider conversations without losing the project', () => {

@@ -11,8 +11,15 @@ const getJson=url=>new Promise((resolve,reject)=>http.get(url,r=>{let d='';r.on(
   await new Promise((r,j)=>{ws.onopen=r;ws.onerror=j});
   const call=(method,params={})=>new Promise((resolve,reject)=>{const id=++seq;pending.set(id,{resolve,reject});ws.send(JSON.stringify({id,method,params}));});
   const ev=async expression=>{const r=await call('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});if(r.exceptionDetails)throw new Error(r.exceptionDetails.exception?.description||r.exceptionDetails.text||'eval_failed');return r.result.value;};
+  const previousTaskId=await ev(`document.querySelector('#taskId')?.textContent||''`);
   await ev(`document.querySelector('#newTask').click(); true`);
-  for(let i=0;i<100;i++){if(await ev(`!document.querySelector('#taskPanel').classList.contains('hidden')`))break;await new Promise(r=>setTimeout(r,50));}
+  let createdTaskId=null;
+  for(let i=0;i<200;i++){
+    const state=await ev(`(()=>({id:document.querySelector('#taskId')?.textContent||'',visible:!document.querySelector('#taskPanel').classList.contains('hidden')}))()`);
+    if(state.visible&&state.id&&state.id!==previousTaskId){createdTaskId=state.id;break;}
+    await new Promise(r=>setTimeout(r,50));
+  }
+  if(!createdTaskId)throw new Error('new_task_not_ready');
   const prompt='Gere uma imagem simples de um cubo azul sobre fundo branco. Não pesquise imagens; crie uma imagem.';
   const started=Date.now();
   await ev(`(()=>{const p=document.querySelector('#prompt');p.value=${JSON.stringify(prompt)};p.dispatchEvent(new Event('input',{bubbles:true}));document.querySelector('#composer').requestSubmit();return true})()`);

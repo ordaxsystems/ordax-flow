@@ -26,7 +26,15 @@ function getJson(url){return new Promise((resolve,reject)=>http.get(url,r=>{let 
   await evalJs(`(()=>{const s=document.querySelector('#observerMode');if(s.value!==${JSON.stringify(mode)}){s.value=${JSON.stringify(mode)};s.dispatchEvent(new Event('change',{bubbles:true}));}return true})()`);
   for(let i=0;i<100;i++){if(await evalJs(`document.querySelector('#observerMode').value===${JSON.stringify(mode)}&&!document.querySelector('#observerMode').disabled`))break;await sleep(30);}
   const initial=await evalJs(`(()=>({observerMode:document.querySelector('#observerMode').value,directMode:document.querySelector('#directMode').textContent,provider:document.querySelector('#providerText').textContent,hint:document.querySelector('#observerHint').textContent}))()`);
-  await evalJs(`document.querySelector('#newTask').click(); true`);for(let i=0;i<200;i++){if(await evalJs(`!document.querySelector('#taskPanel').classList.contains('hidden')`))break;await sleep(50);}
+  const previousTaskId=await evalJs(`document.querySelector('#taskId')?.textContent||''`);
+  await evalJs(`document.querySelector('#newTask').click(); true`);
+  let createdTaskId=null;
+  for(let i=0;i<200;i++){
+    const state=await evalJs(`(()=>({id:document.querySelector('#taskId')?.textContent||'',visible:!document.querySelector('#taskPanel').classList.contains('hidden')}))()`);
+    if(state.visible&&state.id&&state.id!==previousTaskId){createdTaskId=state.id;break;}
+    await sleep(50);
+  }
+  if(!createdTaskId)throw new Error('new_task_not_ready');
   const started=Date.now();
   await evalJs(`(()=>{const p=document.querySelector('#prompt');p.value=${JSON.stringify(prompt)};p.dispatchEvent(new Event('input',{bubbles:true}));document.querySelector('#composer').requestSubmit();return true})()`);
   let firstVisibleAt=null,firstVisibleText='',firstVisibleSource='',finalAt=null,finalText='',sawLive=false,sawFast=false,sawBeta=false,lastMeaningfulLive='',liveRegressed=false;const samples=[],statuses=[];

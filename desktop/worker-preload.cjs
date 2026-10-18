@@ -35,6 +35,26 @@ function snapshot() {
     return Boolean(el);
   });
 
+  // ChatGPT can render a provisional assistant MarkdownRoot before its final
+  // message wrapper exists. Only prefer it while generation is active and it
+  // is outside the previous assistant message; never mirror general page text.
+  const provisionalMarkdown = Array.from(document.querySelectorAll('[data-markdown-text-style="assistant-message"]')).at(-1);
+  if (generating && provisionalMarkdown && (!node || !node.contains(provisionalMarkdown))) {
+    return {
+      mode:'direct',
+      assistantCount:nodes.length + 1,
+      messageId:'',
+      latestUserText,
+      text:cleanText(provisionalMarkdown.innerText || ''),
+      rawBody:'',
+      images:[...readImages(provisionalMarkdown, 64), ...generatedImages],
+      generating:true,
+      complete:false,
+      url:location.href,
+      at:Date.now()
+    };
+  }
+
   if (node) {
     const markdown = node.querySelector('[data-assistant-markdown], [data-message-content]');
     const messageId = node.getAttribute('data-chatgpt-selection-message-id') || node.getAttribute('data-message-id') || '';
