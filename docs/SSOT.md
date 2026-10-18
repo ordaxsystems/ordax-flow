@@ -38,6 +38,8 @@ O banco `%LOCALAPPDATA%\OrdaX\Gratis\data\ordax-gratis.sqlite` é a fonte única
 5. O contexto é limitado e indica omissões; a Task **inteira** continua no SQLite. Não confundir pacote limitado com perda de memória.
 6. Qualquer nova camada de UI/API deve consultar uma projeção de `Store`; não duplicar estado em JSON, localStorage, outro arquivo SQLite ou memória do ChatGPT. O renderer exibe somente a página selecionada; avançar/voltar no histórico solicita uma nova projeção, sem acumular milhares de elementos DOM.
 7. Migrar campos legados requer teste de leitura de dados antigos e reversão segura; não apagar checkpoints antigos nem imagens durante atualização.
+8. **Nova conversa versus rascunho antigo:** criar uma Task nova/segmento novo deve preparar um novo chat do provedor e confirmar o composer vazio **antes** de inserir o pedido. Só essa transição explícita pode descartar o texto transitório no composer antigo; o rascunho da Task permanece persistido e separado no SQLite. Retomar um chat existente nunca apaga texto manual do provedor. Falha na limpeza interrompe a Run e não gera reenvio automático.
+9. O worker ChatGPT Web é um laboratório de compatibilidade com a sessão pessoal do usuário, não infraestrutura do Flow Hub multiusuário. Testes unitários da transição não comprovam envio/resposta real; a validação do ChatGPT Web exige teste de navegador, autenticação oficial e confirmação da resposta.
 
 ## Gates
 
