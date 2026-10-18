@@ -36,3 +36,17 @@ export async function submitExactlyOnce({ fire, readState, wait, baseline, promp
   }
   throw new Error(unresolvedSubmitCode(latest));
 }
+
+export async function waitForSubmitControl({ read, wait, maxChecks = 40 }) {
+  if (typeof read !== 'function' || typeof wait !== 'function' || !Number.isInteger(maxChecks) || maxChecks < 1) {
+    throw new TypeError('invalid_submit_control_dependencies');
+  }
+  for (let i = 0; i < maxChecks; i++) {
+    const control = await read();
+    if (control?.button && Number.isFinite(control.x) && Number.isFinite(control.y)) return control;
+    await wait();
+  }
+  // If React has not committed an enabled visible submit control after the
+  // input is recognized, no attempt was made. Do not fire a speculative Enter.
+  throw new Error('send_control_unavailable');
+}
