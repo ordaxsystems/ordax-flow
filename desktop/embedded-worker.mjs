@@ -559,9 +559,8 @@ export class EmbeddedChatWorker {
     }
     if (!recognized) throw new Error('composer_input_not_recognized');
 
-    // Select one legitimate submit control; do not perform multiple
-    // fallbacks after an ambiguous response. Electron CDP dispatches a trusted
-    // browser input event, unlike element.click()/form.requestSubmit().
+    // Wait until React renders a usable submit control before attempting
+    // exactly one standards-based form submission. No fallback clicks.
     const target = await waitForSubmitControl({
       read: () => wc.executeJavaScript(`(() => {
       const input = ${composerExpression()};
@@ -580,9 +579,27 @@ export class EmbeddedChatWorker {
 
     const fire = async () => {
       if (this.streamContext) this.streamContext.submitAttemptAt = Date.now();
-      await wc.debugger.sendCommand('Input.dispatchMouseEvent', { type:'mouseMoved', x:target.x, y:target.y });
-      await wc.debugger.sendCommand('Input.dispatchMouseEvent', { type:'mousePressed', x:target.x, y:target.y, button:'left', clickCount:1 });
-      await wc.debugger.sendCommand('Input.dispatchMouseEvent', { type:'mouseReleased', x:target.x, y:target.y, button:'left', clickCount:1 });
+      // The hidden Chromium view can accept text while discarding synthetic
+      // pointer events. Use the browser's standardized form-submission API
+      // instead of a simulated click. Exactly one requestSubmit invocation
+      // is made for this Run; the receipt watcher still fails closed.
+      const submitted = await wc.executeJavaScript(`(() => {
+        const input = ${composerExpression()};
+        const form = input?.closest('form');
+        if (!form || typeof form.requestSubmit !== 'function') return false;
+        const selectors = ${JSON.stringify(selectors.send)};
+        const matches = selectors.flatMap(selector => Array.from(form.querySelectorAll(selector)));
+        const button = matches.find(el =>
+          el?.type === 'submit' && !el.disabled &&
+          el.getAttribute('aria-disabled') !== 'true' &&
+          el.getClientRects().length
+        ) || form.querySelector('button[type="submit"]:not([disabled])');
+        if (!button || button.type !== 'submit' || button.disabled ||
+            button.getAttribute('aria-disabled') === 'true' || !button.getClientRects().length) return false;
+        form.requestSubmit(button);
+        return true;
+      })()`);
+      if (!submitted) throw new Error('send_control_unavailable');
     };
 
     try {
