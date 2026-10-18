@@ -47,5 +47,6 @@ Os apps da web necessitam de uma sessão segura de conta OrdaX fornecida por `au
 - `node --test test/flow-apps.test.mjs test/relay.test.mjs`: 8 testes HTTP de separação, RBAC, projeção restrita, roteamento, acesso cruzado e idempotência. Todos aprovados em 18/10/2026.
 - Lote anterior: 12 computadores/identidades, 2 Tasks cada, 8 mensagens cada = 192 mensagens intercaladas e encaminhadas corretamente usando provedor determinístico de teste.
 - **Ainda não homologado em produção:** autenticação real, sincronização, isolamento com múltiplas réplicas, rate limiting, cobrança, roteador de modelos, UI end-to-end em navegador real e hosting. Não confundir testes com simulador com infraestrutura implantada.
+- **CI GitHub:** workflow ainda não publicado: o push foi rejeitado por falta de escopo OAuth `workflow`. Não contornar essa proteção; ativar a CI somente com credencial ou integração oficialmente autorizada. Até lá, executar `npm run validate` localmente antes de cada push.
 
 **Regra de arquitetura:** nenhum segundo broker, serviço de autenticação, mecanismo de cotas, tabela de memória ou MCP paralelo dentro dos frontends.
