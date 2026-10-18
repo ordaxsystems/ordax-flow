@@ -96,10 +96,32 @@ function appendLiveRun(runId, userMessage) {
   box.scrollTop = box.scrollHeight;
 }
 
+const RUN_STAGE_TEXT = Object.freeze({
+  health:'Verificando sessão do ChatGPT…',
+  prepare:'Preparando conversa do provedor…',
+  baseline:'Preparando observação de resposta…',
+  submit:'Preenchendo e acionando o envio…',
+  'await-response':'Aguardando a resposta do ChatGPT…',
+  assets:'Finalizando e verificando os resultados…'
+});
+
+function updateLiveStage(payload) {
+  const node = document.getElementById(`live-${payload.runId}`);
+  if (!node || node.dataset.streamStarted === 'true') return;
+  const content = node.querySelector('.live-content');
+  const label = RUN_STAGE_TEXT[payload.stage];
+  if (!label) return;
+  content.textContent = label;
+  const elapsed = payload.runStartedAt ? Math.max(0, Math.round((payload.at - payload.runStartedAt) / 1000)) : 0;
+  $('#runStatus').textContent = `${label} • ${elapsed}s desde o início`;
+  $('#runStatus').classList.remove('hidden');
+}
+
 function updateLiveRun(payload) {
   const node = document.getElementById(`live-${payload.runId}`);
   if (!node) return;
   const content = node.querySelector('.live-content');
+  if (payload.text) node.dataset.streamStarted = 'true';
   content.textContent = payload.text || (payload.generating ? 'Gerando…' : 'Processando…');
   node.classList.toggle('streaming', Boolean(payload.generating));
   const base = payload.submitAttemptAt || payload.submittedAt || payload.runStartedAt;
@@ -721,6 +743,10 @@ $('#prompt').addEventListener('keydown', event => {
 window.ordax.onRunStarted(payload => {
   if (payload.taskId !== currentTaskId) return;
   appendLiveRun(payload.runId, payload.userMessage);
+});
+window.ordax.onTaskStage(payload => {
+  if (payload.taskId !== currentTaskId) return;
+  updateLiveStage(payload);
 });
 window.ordax.onTaskStream(payload => {
   if (payload.taskId !== currentTaskId) return;
