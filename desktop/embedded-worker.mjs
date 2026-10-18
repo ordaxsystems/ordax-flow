@@ -1,4 +1,5 @@
 import { WebContentsView, session } from 'electron';
+import { assertProviderDraftAllowed, ensureEmptyNewComposer } from '../src/provider-composer-transition.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -331,6 +332,33 @@ export class EmbeddedChatWorker {
     throw new Error('google_login_navigation_not_observed');
   }
 
+  async #clearNewChatComposer() {
+    const wc = this.view.webContents;
+    const focused = await wc.executeJavaScript(`(() => {
+      const input = ${composerExpression()};
+      if (!input) return false;
+      input.focus();
+      return document.activeElement === input || input.contains(document.activeElement);
+    })()`).catch(() => false);
+    if (!focused) throw new Error('new_chat_composer_focus_failed');
+    try {
+      if (!wc.debugger.isAttached()) wc.debugger.attach('1.3');
+      await wc.debugger.sendCommand('Input.dispatchKeyEvent', { type:'keyDown', key:'a', code:'KeyA', modifiers:2, windowsVirtualKeyCode:65 });
+      await wc.debugger.sendCommand('Input.dispatchKeyEvent', { type:'keyUp', key:'a', code:'KeyA', windowsVirtualKeyCode:65 });
+      await wc.debugger.sendCommand('Input.dispatchKeyEvent', { type:'keyDown', key:'Backspace', code:'Backspace', windowsVirtualKeyCode:8 });
+      await wc.debugger.sendCommand('Input.dispatchKeyEvent', { type:'keyUp', key:'Backspace', code:'Backspace', windowsVirtualKeyCode:8 });
+    } catch {
+      throw new Error('new_chat_composer_clear_failed');
+    }
+  }
+
+  async #confirmFreshComposer() {
+    return ensureEmptyNewComposer({
+      readComposer: () => this.#waitForComposer(),
+      clearComposer: () => this.#clearNewChatComposer()
+    });
+  }
+
   async #startNewChat() {
     const wc = this.view.webContents;
     const currentUrl = wc.getURL();
@@ -363,19 +391,28 @@ export class EmbeddedChatWorker {
             try {
               const parsed = new URL(url);
               const contextChanged = url !== currentUrl || parsed.pathname === '/';
-              if (parsed.origin === 'https://chatgpt.com' && contextChanged && state.found && state.formReady && !state.text?.trim()) return true;
+              if (parsed.origin === 'https://chatgpt.com' && contextChanged && state.found && state.formReady) {
+                await this.#confirmFreshComposer();
+                return true;
+              }
             } catch {}
           }
         }
       }
     } catch {}
-    await this.#safeLoad('https://chatgpt.com/', { requireComposer:true, protectDraft:true });
+    // This path is reached only after an explicit new-conversation action.
+    // Navigation may discard the old transient ChatGPT draft; the OrdaX Task
+    // draft stays in its own store. A same-URL home page must be reloaded.
+    await this.#safeLoad('https://chatgpt.com/', { requireComposer:true, protectDraft:false, forceReload:true });
+    await this.#confirmFreshComposer();
     return false;
   }
 
   async newChat() {
-    await this.#startNewChat();
-    return this.status();
+    return this.enqueue(async () => {
+      await this.#startNewChat();
+      return this.status();
+    });
   }
 
   async showConversation(url, { force = false } = {}) {
@@ -409,7 +446,7 @@ export class EmbeddedChatWorker {
     throw new Error('composer_not_found');
   }
 
-  async #safeLoad(url, { requireComposer = false, protectDraft = false } = {}) {
+  async #safeLoad(url, { requireComposer = false, protectDraft = false, forceReload = false } = {}) {
     const wc = this.view.webContents;
     if (protectDraft) {
       const state = await this.#composerState().catch(() => ({ found:false, text:'' }));
@@ -421,9 +458,11 @@ export class EmbeddedChatWorker {
       try {
         const current = new URL(currentUrl);
         if (current.origin === target.origin && current.pathname === target.pathname && current.search === target.search) {
-          if (!requireComposer) return;
-          const state = await this.#composerState().catch(() => ({ found:false }));
-          if (state.found) return;
+          if (!forceReload) {
+            if (!requireComposer) return;
+            const state = await this.#composerState().catch(() => ({ found:false }));
+            if (state.found) return;
+          }
         }
       } catch {}
     }
@@ -669,15 +708,21 @@ export class EmbeddedChatWorker {
       this.stage = 'prepare';
       const currentDraft = await this.#composerState().catch(() => ({ found:false, text:'' }));
       const draftCheckedAt = Date.now();
-      if (currentDraft.text?.trim()) throw new Error('chatgpt_draft_present');
+      const startsFresh = Boolean(newSession || !chatUrl);
+      assertProviderDraftAllowed({ newConversation: startsFresh, draftText: currentDraft.text });
       const previousSnapshot = await this.#assistantSnapshot().catch(() => ({ messages:[] }));
       for (const message of previousSnapshot.messages || []) {
         if (message?.id) this.seenAssistantMessageIds.add(String(message.id));
       }
 
-      if (newSession || !chatUrl) await this.#startNewChat();
+      if (startsFresh) await this.#startNewChat();
       else if (wc.getURL() !== chatUrl) await this.#safeLoad(chatUrl, { requireComposer:true, protectDraft:true });
       else await this.#waitForComposer();
+      // A persisted conversation is never allowed to overwrite a visible draft.
+      if (!startsFresh) {
+        const preparedComposer = await this.#composerState();
+        assertProviderDraftAllowed({ newConversation: false, draftText: preparedComposer.text });
+      }
       const conversationReadyAt = Date.now();
 
       this.stage = 'baseline';
