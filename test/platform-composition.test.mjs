@@ -24,7 +24,7 @@ test('Flow Client and Hub share canonical Platform account identity without hidd
       expires_at_unix:Math.floor(Date.now()/1000)+3600}}:{ok:false,error:'invalid'}));
   });
   const appHandler=createFlowPlatformGateway({
-    platformOrigin:platform.origin,allowLoopbackHttp:true,platformTimeoutMs:15000,
+    platformOrigin:platform.origin,publicOrigin:'http://127.0.0.1',allowLoopbackHttp:true,platformTimeoutMs:15000,
     authenticateBrowserSession:async()=>null, // User-facing web sessions not wired yet.
     authorizeTask:async({principal,taskId})=>taskId===SUBJECT+'_project',
     listProjects:async({principal})=>[{id:principal.userId+'_project',title:'My authorized project'}],
@@ -75,6 +75,7 @@ test('gateway refuses startup when account/session, authorizers or idempotency p
     /flow_production_ports_unconfigured/);
   const ports={
     platformOrigin:'https://product.example.test',
+    publicOrigin:'https://flow.example.test',
     authenticateBrowserSession:async()=>null,
     authorizeTask:async()=>false,
     listProjects:async()=>[],

@@ -85,12 +85,15 @@ export function createFlowRelay({
     if(request.method==='GET' && pathname==='/health')
       return reply(response,200,{service:'ordax-flow-relay',status:'ready'});
 
+    const sessionRoute=request.method==='GET' && pathname==='/v1/session';
+    const hubSessionRoute=request.method==='GET' && pathname==='/v1/hub/session' &&
+      typeof authorizeHub==='function';
     const messageRoute=request.method==='POST' && pathname==='/v1/messages';
     const projectRoute=request.method==='GET' && pathname==='/v1/projects' &&
       typeof listProjects==='function';
     const hubRoute=request.method==='GET' && pathname==='/v1/hub/overview' &&
       typeof authorizeHub==='function';
-    if (!messageRoute && !projectRoute && !hubRoute)
+    if (!sessionRoute && !hubSessionRoute && !messageRoute && !projectRoute && !hubRoute)
       return reply(response,404,{error:'not_found'});
 
     const header=String(request.headers.authorization||'');
@@ -106,10 +109,18 @@ export function createFlowRelay({
     } catch { return reply(response,401,{error:'unauthorized'}); }
 
     const userId=principal?.userId;
-    if(typeof userId!=='string'||!IDENTIFIER.test(userId))
+    if(typeof userId!=='string'||!IDENTIFIER.test(userId)) {
+      if(sessionRoute)return reply(response,200,{authenticated:false});
       return reply(response,401,{error:'unauthorized'});
+    }
 
     try {
+      if(sessionRoute)return reply(response,200,{authenticated:true});
+      if(hubSessionRoute){
+        const allowed=await authorizeHub({principal,capability:HUB_CAPABILITY});
+        if(allowed!==true)return reply(response,403,{error:'forbidden'});
+        return reply(response,200,{authenticated:true,operator:true});
+      }
       if (hubRoute) {
         const granted=await authorizeHub({principal,capability:HUB_CAPABILITY});
         if (granted!==true) return reply(response,403,{error:'forbidden'});

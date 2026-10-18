@@ -1,5 +1,7 @@
 # Flow Client e Flow Hub — separação de produtos
 
+**Autenticação unificada:** o Flow Client e o Hub reutilizam a Conta OrdaX, sem segundo cadastro nem senha; a sessão web e o registro SSO canônico estão descritos em [FLOW-SSO-BOUNDARY.md](FLOW-SSO-BOUNDARY.md). Login não concede automaticamente permissão de operador, e um navegador em outro computador deve ter sua própria sessão autorizada.
+
 Decisão (18/10/2026): **duas aplicações visíveis**, com responsabilidades distintas, suportadas por **um serviço de API canônico**. Este repositório continua como SSOT do código específico Flow. Nenhum import, configuração ou dependência operacional em `ordax-os` ou `ordax-runtime`.
 
 ## 1. Flow Client — usuário final

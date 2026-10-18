@@ -11,6 +11,12 @@ function choose(project,button){
 }
 async function initialize(){
   try {
+    const session=await callFlow('/v1/session');
+    if(session.authenticated!==true){
+      state('A Conta OrdaX não está autenticada neste navegador. A entrada única depende da sessão oficial da plataforma.',true);
+      el('projects').textContent='Entre na Conta OrdaX pelo portal oficial.';
+      return;
+    }
     const data=await callFlow('/v1/projects');
     const projects=Array.isArray(data.projects)?data.projects:[];
     el('projects').replaceChildren();

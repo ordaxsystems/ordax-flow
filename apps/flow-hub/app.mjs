@@ -5,6 +5,9 @@ async function load(){
   refresh.disabled=true;state.textContent='Carregando indicadores autorizados…';state.classList.remove('error');
   for(const name of names)document.getElementById(name).textContent='—';
   try{
+    const session=await callFlow('/v1/hub/session');
+    if(session.authenticated!==true||session.operator!==true)
+      throw new Error('Operador não autorizado pela Conta OrdaX.');
     const result=await callFlow('/v1/hub/overview');
     if(!result.stats||names.some(name=>!Number.isSafeInteger(result.stats[name])))
       throw Error('Indicadores inválidos.');

@@ -1,5 +1,7 @@
 # OrdaX Flow — Client + Hub (desktop legado 0.4.12)
 
+**Login único:** Flow reutiliza a Conta OrdaX pela OrdaX Platform, sem novo cadastro, senha ou conta ChatGPT. [SSO e limites atuais](docs/FLOW-SSO-BOUNDARY.md). A camada de reconhecimento de sessão está implementada e testada com sessão simulada; o login OAuth real e o callback ainda precisam ser configurados no owner de identidade.
+
 **Integração P0 de identidade:** `src/relay/platform-account.mjs` verifica conta via o endpoint canônico `/v3/product/session` da OrdaX Platform; `src/relay/platform-composition.mjs` exige portas reais de autorização, sessão, projetos, RBAC do Hub, dispatch e idempotência. Testada com Platform HTTP simulada; **produção e login do navegador ainda não conectados**. Nenhuma dependência do OrdaX OS.
 
 **Dois aplicativos, um único gateway de IA:** `apps/flow-client/` é a experiência do usuário; `apps/flow-hub/` é o painel da central e exige RBAC. Ambas as interfaces compartilham o contrato de `src/relay/`, sem replicar identidade, cotas ou histórico. [Arquitetura e status real](docs/FLOW-CLIENT-HUB.md). Os novos shells ainda não têm adapters reais de conta OrdaX, histórico central ou provedor comercial.
