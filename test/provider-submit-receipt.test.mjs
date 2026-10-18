@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { providerSubmissionConfirmed, unresolvedSubmitCode, submitExactlyOnce } from '../src/provider-submit-receipt.mjs';
+import { providerSubmissionConfirmed, unresolvedSubmitCode, submitExactlyOnce, waitForSubmitControl } from '../src/provider-submit-receipt.mjs';
 const baseline={userCount:0,composerText:'',url:'https://chatgpt.com/'};
 const prompt='ORDAX_SEND_ONCE_TEST';
 
@@ -32,7 +32,6 @@ test('unchanged typed composer fails closed without automatic resend',async()=>{
   assert.equal(calls,1);
 });
 
-import { waitForSubmitControl } from '../src/provider-submit-receipt.mjs';
 test('waits for a React submit button before performing any send',async()=>{
   let reads=0,attempted=0;
   const control=await waitForSubmitControl({read:async()=>{reads++;return reads>3?{button:true,x:32,y:12}:{button:false,form:true};},wait:async()=>{},maxChecks:5});
