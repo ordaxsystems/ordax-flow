@@ -51,3 +51,18 @@ O banco `%LOCALAPPDATA%\OrdaX\Gratis\data\ordax-gratis.sqlite` é a fonte única
 - A limpeza do editor **não prova envio**. Confirmação requer observação de mensagem do usuário correspondente ou novo permalink canônico de conversa; timeout com editor vazio é `send_confirmation_unknown`, não sucesso nem permissão para reenviar.
 - Uma execução com aceite incerto permanece auditável e exige reconciliação humana antes de nova tentativa. Não transformar em `succeeded` e não ressuscitar automaticamente a mesma mensagem.
 - O ChatGPT Web é somente laboratório. O envio em produção do Hub deve usar provedor autorizado por API com receipts/idempotência do servidor.
+
+## Diagnóstico e latência do worker ChatGPT Web — 18/10/2026
+
+- **Diferenciar geração da IA de falha de envio**: o tempo de primeira resposta depende do provedor. Tempos de preparação, editor, reconhecimento do envio, primeiro delta e conclusão devem ser observados em fases separadas. Não afirmar que o app é mais rápido só porque os testes unitários passaram.
+- O aplicativo desktop deve publicar fases concretas (`health`, `prepare`, `baseline`, `submit`, `await-response`, `assets`) no painel da Task atual. A interface só atualiza o cartão da Run e nunca substitui uma resposta já em streaming por uma etapa antiga.
+- A telemetria durável também precisa abranger **Runs que falharam**, incluindo `failed_stage` e tempos parciais, sem guardar cookies, tokens, payloads de rede nem credenciais. Erros persistidos não tornam um envio incerto elegível a reenvio automático.
+- Um provedor já aberto exatamente em `https://chatgpt.com/`, com composer íntegro e vazio, pode atender a uma solicitação explícita de nova conversa sem reload. Um permalink de chat, URL parametrizada, rascunho não vazio ou composer incompleto **nunca** habilita esse atalho.
+- O laboratório Jarvis e o OrdaX Grátis podem ter estados diferentes por sessão e viewport. O sucesso de um não prova o E2E do outro. Gate obrigatório: mensagem do usuário observada, resposta do provedor confirmada, sem duplicação, com streaming e latências por fase.
+- Testes: suite de contrato de novo chat, persistência SQLite para failed-run, proteção de envio exatamente uma vez, E2E de navegação/status do renderer e smoke real (somente com sessão autorizada). Nenhuma API interna não documentada do ChatGPT é pré-requisito.
+
+### Envio compatível com Electron oculto — gate de regressão
+
+A validação real do Grátis confirmou que um `WebContentsView` pode receber `Input.insertText` mas ignorar eventos simulados de ponteiro. O envio canônico usa **um único** `HTMLFormElement.requestSubmit(button)` no formulário oficial da página, depois de verificar editor e botão `type=submit` habilitado. Esse mecanismo é parte da API HTML padrão; não chama endpoint privado, não modifica o conteúdo da mensagem e não faz retries implícitos. Sucesso só existe após recibo observável (permalink canônico de chat ou mensagem correspondente) e resposta de IA verificada. O Jarvis e o Grátis reutilizam esse mesmo worker.
+
+Os testes de aceitação incluem: contrato de envio único, proteção de rascunho, estados visuais de preparação, streaming progressivo real e contagem SQLite de uma mensagem de usuário e uma de assistente por Task de teste. Evitar contabilizar textos de status como streaming. Números de latência de uma ou duas mensagens não equivalem a benchmark estatístico; usar `npm run benchmark:live` em sessões autorizadas para p50/p95 quando for necessário comparar desempenho.

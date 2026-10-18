@@ -1,6 +1,7 @@
 import { WebContentsView, session } from 'electron';
 import { assertProviderDraftAllowed, ensureEmptyNewComposer } from '../src/provider-composer-transition.mjs';
 import { submitExactlyOnce, waitForSubmitControl } from '../src/provider-submit-receipt.mjs';
+import { canReuseFreshProviderHome } from '../src/provider-home-readiness.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -84,6 +85,8 @@ export class EmbeddedChatWorker {
     this.view = createView(this.partition);
     this.active = false;
     this.lastError = null;
+    this.lastFailureMetrics = null;
+    this.stageSink = null;
     this.ready = false;
     this.chain = Promise.resolve();
     this.streamContext = null;
@@ -94,6 +97,16 @@ export class EmbeddedChatWorker {
     this.fastStreamSink = null;
     this.#configureView();
     this.#configureFastNetworkObserver();
+  }
+
+  setStageSink(fn) {
+    this.stageSink = typeof fn === 'function' ? fn : null;
+  }
+
+  #setStage(stage) {
+    if (this.stage === stage) return;
+    this.stage = stage;
+    try { this.stageSink?.({ stage, at:Date.now() }); } catch { /* observability never blocks an execution */ }
   }
 
   setObserverMode(mode = 'auto') {
@@ -370,6 +383,13 @@ export class EmbeddedChatWorker {
   async #startNewChat() {
     const wc = this.view.webContents;
     const currentUrl = wc.getURL();
+    const homeComposer = await this.#composerState().catch(() => ({ found:false, formReady:false, text:'' }));
+    // A ready provider home already IS a fresh conversation. Avoid an
+    // unnecessary DOM click or reload for every new Task.
+    if (canReuseFreshProviderHome({ url:currentUrl, composer:homeComposer })) {
+      await this.#confirmFreshComposer();
+      return true;
+    }
     try {
       const current = new URL(currentUrl);
       if (current.origin === 'https://chatgpt.com') {
@@ -539,9 +559,8 @@ export class EmbeddedChatWorker {
     }
     if (!recognized) throw new Error('composer_input_not_recognized');
 
-    // Select one legitimate submit control; do not perform multiple
-    // fallbacks after an ambiguous response. Electron CDP dispatches a trusted
-    // browser input event, unlike element.click()/form.requestSubmit().
+    // Wait until React renders a usable submit control before attempting
+    // exactly one standards-based form submission. No fallback clicks.
     const target = await waitForSubmitControl({
       read: () => wc.executeJavaScript(`(() => {
       const input = ${composerExpression()};
@@ -560,9 +579,27 @@ export class EmbeddedChatWorker {
 
     const fire = async () => {
       if (this.streamContext) this.streamContext.submitAttemptAt = Date.now();
-      await wc.debugger.sendCommand('Input.dispatchMouseEvent', { type:'mouseMoved', x:target.x, y:target.y });
-      await wc.debugger.sendCommand('Input.dispatchMouseEvent', { type:'mousePressed', x:target.x, y:target.y, button:'left', clickCount:1 });
-      await wc.debugger.sendCommand('Input.dispatchMouseEvent', { type:'mouseReleased', x:target.x, y:target.y, button:'left', clickCount:1 });
+      // The hidden Chromium view can accept text while discarding synthetic
+      // pointer events. Use the browser's standardized form-submission API
+      // instead of a simulated click. Exactly one requestSubmit invocation
+      // is made for this Run; the receipt watcher still fails closed.
+      const submitted = await wc.executeJavaScript(`(() => {
+        const input = ${composerExpression()};
+        const form = input?.closest('form');
+        if (!form || typeof form.requestSubmit !== 'function') return false;
+        const selectors = ${JSON.stringify(selectors.send)};
+        const matches = selectors.flatMap(selector => Array.from(form.querySelectorAll(selector)));
+        const button = matches.find(el =>
+          el?.type === 'submit' && !el.disabled &&
+          el.getAttribute('aria-disabled') !== 'true' &&
+          el.getClientRects().length
+        ) || form.querySelector('button[type="submit"]:not([disabled])');
+        if (!button || button.type !== 'submit' || button.disabled ||
+            button.getAttribute('aria-disabled') === 'true' || !button.getClientRects().length) return false;
+        form.requestSubmit(button);
+        return true;
+      })()`);
+      if (!submitted) throw new Error('send_control_unavailable');
     };
 
     try {
@@ -696,13 +733,14 @@ export class EmbeddedChatWorker {
   async sendPrompt({ prompt, chatUrl = null, newSession = false }) {
     return this.enqueue(async () => {
       const wc = this.view.webContents;
+      this.lastFailureMetrics = null;
       const prepareStartedAt = Date.now();
-      this.stage = 'health';
+      this.#setStage('health');
       const health = await this.health();
       const healthCompletedAt = Date.now();
       if (health.verification_required) throw new Error('chatgpt_verification_required');
       if (health.auth_state === 'authenticating') throw new Error('chatgpt_authentication_in_progress');
-      this.stage = 'prepare';
+      this.#setStage('prepare');
       const currentDraft = await this.#composerState().catch(() => ({ found:false, text:'' }));
       const draftCheckedAt = Date.now();
       const startsFresh = Boolean(newSession || !chatUrl);
@@ -722,7 +760,7 @@ export class EmbeddedChatWorker {
       }
       const conversationReadyAt = Date.now();
 
-      this.stage = 'baseline';
+      this.#setStage('baseline');
       this.fastNetwork.firstByteAt = null;
       this.fastNetwork.activeRequestId = null;
       this.fastNetwork.text = '';
@@ -739,11 +777,11 @@ export class EmbeddedChatWorker {
       const promptText = String(prompt || '').trim();
       this.streamContext = { beforeCount, baseline, promptText, beforeImageSources:new Set(beforeImages), currentAssistantMessageId:null, lastSignature:'', firstActivityAt:null, firstDeltaAt:null, firstObserver:null, fastFirstDeltaAt:null, betaFirstDeltaAt:null, submitAttemptAt:null, providerRequestSeenAt:null, submittedAt:null, networkFirstByteAt:null, fastSeen:false, betaSeen:false, fastDelivered:false, fastSuppressed:false, fastSuppressionReason:null, lastDeliveredText:'', lastDeliveredSource:null, prepareStartedAt, healthCompletedAt, draftCheckedAt, conversationReadyAt, observerReadyAt, baselineReadyAt };
 
-      this.stage = 'submit';
+      this.#setStage('submit');
       await this.#setComposerAndSend(promptText);
       if (!this.streamContext.submittedAt) this.streamContext.submittedAt = Date.now();
 
-      this.stage = 'await-response';
+      this.#setStage('await-response');
       const started = Date.now();
       let latest = null, latestSignature = '', stable = 0;
       while (Date.now() - started < 180000) {
@@ -785,18 +823,35 @@ export class EmbeddedChatWorker {
         if (!transient && !generating && ((candidate.complete && stable >= 2) || stable >= 4)) break;
       }
       if (!latest) throw new Error('response_not_observed');
-      this.stage = 'assets';
+      this.#setStage('assets');
       const images = await this.#fetchImages(latest.images || []);
       this.lastError = null;
       if (this.streamContext?.currentAssistantMessageId) this.seenAssistantMessageIds.add(this.streamContext.currentAssistantMessageId);
       const metrics = this.streamContext ? { prepareStartedAt:this.streamContext.prepareStartedAt, healthCompletedAt:this.streamContext.healthCompletedAt, draftCheckedAt:this.streamContext.draftCheckedAt, conversationReadyAt:this.streamContext.conversationReadyAt, observerReadyAt:this.streamContext.observerReadyAt, baselineReadyAt:this.streamContext.baselineReadyAt, submitAttemptAt:this.streamContext.submitAttemptAt, providerRequestSeenAt:this.streamContext.providerRequestSeenAt, submittedAt:this.streamContext.submittedAt, firstActivityAt:this.streamContext.firstActivityAt, firstDeltaAt:this.streamContext.firstDeltaAt, fastFirstDeltaAt:this.streamContext.fastFirstDeltaAt, betaFirstDeltaAt:this.streamContext.betaFirstDeltaAt, networkFirstByteAt:this.streamContext.networkFirstByteAt, completedAt:Date.now(), observerUsed:this.streamContext.firstObserver || (this.streamContext.fastDelivered ? 'fast' : 'beta'), firstObserver:this.streamContext.firstObserver || null, fastSeen:Boolean(this.streamContext.fastSeen), betaSeen:Boolean(this.streamContext.betaSeen), fastDelivered:Boolean(this.streamContext.fastDelivered), fastSuppressed:Boolean(this.streamContext.fastSuppressed), fastSuppressionReason:this.streamContext.fastSuppressionReason || null } : null;
       this.streamContext = null;
-      this.stage = 'idle';
+      this.#setStage('idle');
       return { text:String(latest.text||'').trim(), images, chatUrl:wc.getURL(), observedAt:new Date().toISOString(), metrics };
     }).catch(error => {
       const stage = this.stage || 'unknown';
+      const ctx = this.streamContext;
+      // Persist timings on failed runs too: successful-only metrics mask
+      // the long waits the user actually experiences.
+      this.lastFailureMetrics = ctx ? {
+        prepareStartedAt:ctx.prepareStartedAt,
+        healthCompletedAt:ctx.healthCompletedAt,
+        draftCheckedAt:ctx.draftCheckedAt,
+        conversationReadyAt:ctx.conversationReadyAt,
+        observerReadyAt:ctx.observerReadyAt,
+        baselineReadyAt:ctx.baselineReadyAt,
+        submitAttemptAt:ctx.submitAttemptAt,
+        providerRequestSeenAt:ctx.providerRequestSeenAt,
+        submittedAt:ctx.submittedAt,
+        firstDeltaAt:ctx.firstDeltaAt,
+        completedAt:Date.now(),
+        failedStage:stage
+      } : { prepareStartedAt:Date.now(), completedAt:Date.now(), failedStage:stage };
       this.streamContext = null;
-      this.stage = 'idle';
+      this.#setStage('idle');
       this.lastError = `${stage}:${String(error?.message || error)}`;
       throw new Error(this.lastError);
     });

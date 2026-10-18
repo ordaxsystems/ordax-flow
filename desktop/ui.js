@@ -1,3 +1,4 @@
+import { renderLiveStage } from './ui-stage.mjs';
 const $ = selector => document.querySelector(selector);
 let currentTaskId = null;
 let currentTask = null;
@@ -96,10 +97,15 @@ function appendLiveRun(runId, userMessage) {
   box.scrollTop = box.scrollHeight;
 }
 
+function updateLiveStage(payload) {
+  renderLiveStage(payload, { getNode:id=>document.getElementById(id), statusElement:$('#runStatus') });
+}
+
 function updateLiveRun(payload) {
   const node = document.getElementById(`live-${payload.runId}`);
   if (!node) return;
   const content = node.querySelector('.live-content');
+  if (payload.text) node.dataset.streamStarted = 'true';
   content.textContent = payload.text || (payload.generating ? 'Gerando…' : 'Processando…');
   node.classList.toggle('streaming', Boolean(payload.generating));
   const base = payload.submitAttemptAt || payload.submittedAt || payload.runStartedAt;
@@ -721,6 +727,10 @@ $('#prompt').addEventListener('keydown', event => {
 window.ordax.onRunStarted(payload => {
   if (payload.taskId !== currentTaskId) return;
   appendLiveRun(payload.runId, payload.userMessage);
+});
+window.ordax.onTaskStage(payload => {
+  if (payload.taskId !== currentTaskId) return;
+  updateLiveStage(payload);
 });
 window.ordax.onTaskStream(payload => {
   if (payload.taskId !== currentTaskId) return;
