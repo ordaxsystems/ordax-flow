@@ -1,4 +1,4 @@
-# OrdaX Gratis 0.4.8
+# OrdaX Gratis 0.4.9
 
 Aplicativo desktop Windows independente que usa a sessão normal do ChatGPT Web dentro do próprio processo Electron, com Tasks locais duráveis e uma interface OrdaX própria.
 
@@ -48,11 +48,13 @@ A Task local é o SSOT. Uma Task pode atravessar várias conversas internas do C
 
 Runs deixados como `running` após encerramento inesperado são reconciliados no boot como `interrupted` e permanecem resumíveis.
 
+**Rascunhos por projeto:** o texto ainda não enviado fica em `tasks.draft` no SQLite, separado por Task, com revisão monotônica (`draft_revision`) para que gravações atrasadas não restaurem texto já enviado. Alternar projetos ou reiniciar o aplicativo recupera o rascunho correspondente. Ele não se torna mensagem, evento ou memória canônica até ser enviado; a confirmação de envio registra primeiro a mensagem local e só então limpa o rascunho.
+
 ## Continuidade e memória
 
 O OrdaX separa **projeto persistente (Task)** de **conversa descartável do provider**. Um projeto pode ser software, pesquisa, planejamento, criação de conteúdo ou qualquer trabalho de longa duração. Quando a conversa interna acaba, sua memória, checkpoints, decisões e artefatos continuam pertencendo à mesma Task local.
 
-- a coluna esquerda representa Tasks/conversas persistentes do OrdaX;
+- a coluna esquerda representa Tasks/conversas persistentes do OrdaX, com nomes de projeto editáveis no cabeçalho do chat;
 - o chat central mostra o histórico canônico da Task;
 - a coluna direita mostra memória, artefatos e segmentos internos do ChatGPT;
 - a rotação automática pode trocar de chat técnico após 24 respostas concluídas no mesmo segmento, sem criar outra Task ou alterar o histórico exibido;

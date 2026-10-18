@@ -168,6 +168,9 @@ export class Store {
       CREATE INDEX IF NOT EXISTS idx_approval_ledger_task ON approval_ledger(task_id, created_at, id);
     `);
     this.ensureColumn('tasks', 'workspace_session_id', 'TEXT');
+    this.ensureColumn('tasks', 'draft', "TEXT NOT NULL DEFAULT ''");
+    this.ensureColumn('tasks', 'draft_revision', 'INTEGER NOT NULL DEFAULT 0');
+    this.ensureColumn('tasks', 'draft_updated_at', 'TEXT');
     this.ensureColumn('runs', 'worker_id', 'TEXT');
     this.ensureColumn('runs', 'heartbeat_at', 'TEXT');
     this.ensureColumn('runs', 'observer_mode', 'TEXT');
@@ -255,6 +258,31 @@ export class Store {
 
   listTasks() {
     return this.db.prepare(`SELECT t.*, (SELECT COUNT(*) FROM task_conversations c WHERE c.task_id=t.id) AS conversation_count, (SELECT COUNT(*) FROM project_memory_candidates c WHERE c.task_id=t.id AND c.status='pending') AS pending_memory_count FROM tasks t ORDER BY updated_at DESC`).all();
+  }
+
+  renameTask(taskId, title) {
+    const name = String(title ?? '').replace(/\s+/g, ' ').trim();
+    if (!name || name.length > 140) throw new Error('invalid_task_title');
+    const previous = this.db.prepare('SELECT title FROM tasks WHERE id=?').get(taskId);
+    if (!previous) throw new Error('task_not_found');
+    if (previous.title !== name) {
+      this.db.prepare('UPDATE tasks SET title=?,updated_at=? WHERE id=?').run(name, this.now(), taskId);
+      this.event(taskId, 'task.renamed', { previous_title:previous.title, title:name });
+    }
+    return this.getTask(taskId);
+  }
+
+  // Revisions prevent delayed renderer saves from restoring a draft already sent.
+  // Draft updates do not reorder Tasks or become conversation messages/events.
+  setDraft(taskId, content, revision) {
+    const text = String(content ?? '');
+    const version = Number(revision);
+    if (text.length > 20000) throw new Error('task_draft_too_large');
+    if (!Number.isSafeInteger(version) || version < 1) throw new Error('invalid_task_draft_revision');
+    if (!this.db.prepare('SELECT id FROM tasks WHERE id=?').get(taskId)) throw new Error('task_not_found');
+    this.db.prepare('UPDATE tasks SET draft=?,draft_revision=?,draft_updated_at=? WHERE id=? AND draft_revision<?')
+      .run(text, version, this.now(), taskId, version);
+    return this.db.prepare('SELECT draft,draft_revision,draft_updated_at FROM tasks WHERE id=?').get(taskId);
   }
 
   getTask(id) {

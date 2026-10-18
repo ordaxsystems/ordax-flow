@@ -64,7 +64,15 @@
           <div class="task-identity">
             <div class="task-avatar">✦</div>
             <div>
-              <h2 id="taskTitle"></h2>
+              <div class="task-title-line">
+                <h2 id="taskTitle"></h2>
+                <button id="renameTask" class="rename-task" type="button" title="Renomear projeto" aria-label="Renomear projeto">✎</button>
+              </div>
+              <form id="renameTaskForm" class="task-rename-form hidden">
+                <input id="renameTaskInput" type="text" maxlength="140" required aria-label="Nome do projeto" />
+                <button type="submit">Salvar</button>
+                <button id="cancelTaskRename" type="button">Cancelar</button>
+              </form>
               <p id="taskCheckpoint"></p>
             </div>
           </div>
@@ -82,6 +90,7 @@
             <div id="runStatus" class="run-status hidden"></div>
           </form>
           <div class="composer-hint">Enter envia • Shift+Enter quebra linha • a memória da tarefa é local</div>
+          <div id="draftState" class="draft-state" role="status" aria-live="polite"></div>
         </div>
         <div class="task-meta">
           <span id="taskId"></span>

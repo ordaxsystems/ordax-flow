@@ -7,6 +7,51 @@ let loginFlowVisible = false;
 let observerMode = 'auto';
 let allTasks = [];
 let providerRefreshPending = false;
+let navigationEpoch = 0;
+let submittingTaskId = null;
+const draftCache = new Map();
+let draftTimer = null;
+let pendingDraft = null;
+
+function flushDraft() {
+  clearTimeout(draftTimer);
+  draftTimer = null;
+  if (!pendingDraft) return;
+  const { taskId, content, revision } = pendingDraft;
+  pendingDraft = null;
+  void window.ordax.setDraft(taskId, content, revision).then(() => {
+    if (currentTaskId === taskId && draftCache.get(taskId)?.revision === revision) {
+      $('#draftState').textContent = content ? 'Rascunho local • salvo' : '';
+    }
+  }).catch(error => {
+    if (currentTaskId === taskId && draftCache.get(taskId)?.revision === revision) {
+      $('#draftState').textContent = `Rascunho não salvo: ${friendlyError(error)}`;
+    }
+  });
+}
+
+function stageDraft() {
+  if (!currentTaskId) return;
+  const taskId = currentTaskId;
+  const previous = draftCache.get(taskId);
+  const revision = Math.max(previous?.revision || 0, Number(currentTask?.draft_revision || 0)) + 1;
+  const content = $('#prompt').value;
+  draftCache.set(taskId, { content, revision });
+  pendingDraft = { taskId, content, revision };
+  $('#draftState').textContent = content ? 'Rascunho local • salvando…' : '';
+  clearTimeout(draftTimer);
+  draftTimer = setTimeout(flushDraft, 300);
+}
+
+function showDraft(task) {
+  const cached = draftCache.get(task.id);
+  const revision = Number(task.draft_revision || 0);
+  const entry = cached && cached.revision >= revision ? cached : { content: task.draft || '', revision };
+  draftCache.set(task.id, entry);
+  $('#prompt').value = entry.content;
+  $('#prompt').dispatchEvent(new Event('draft-restored'));
+  $('#draftState').textContent = entry.content ? 'Rascunho local • preservado nesta conversa' : '';
+}
 
 function esc(value = '') {
   return String(value).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
@@ -85,7 +130,9 @@ function friendlyError(error) {
     project_memory_candidate_not_found: 'Esta sugestão não foi encontrada.',
     project_memory_candidate_reviewed: 'Esta sugestão já foi revisada.',
     invalid_project_memory_review: 'Ação de revisão inválida.',
-    project_memory_conflict_requires_review: 'A memória aprovada mudou ou exige comparação. Revise os dois valores antes de confirmar.'
+    project_memory_conflict_requires_review: 'A memória aprovada mudou ou exige comparação. Revise os dois valores antes de confirmar.',
+    invalid_task_title: 'Informe um nome válido de até 140 caracteres para o projeto.',
+    task_draft_too_large: 'O rascunho excede 20 mil caracteres.'
   };
   return messages[code] || raw.replace(/^Error invoking remote method '[^']+': Error: /, '');
 }
@@ -278,14 +325,21 @@ function renderContext(task) {
 }
 
 async function openTask(id) {
+  if (id !== currentTaskId) flushDraft();
+  const epoch = ++navigationEpoch;
   const task = await window.ordax.openTask(id);
-  if (!task) return;
+  if (epoch !== navigationEpoch || !task) return;
   currentTaskId = id;
   currentTask = task;
+  showDraft(task);
+  $('#send').disabled = Boolean(submittingTaskId);
   setMemoryEditor(false);
   $('#empty').classList.add('hidden');
   $('#taskPanel').classList.remove('hidden');
   $('#taskTitle').textContent = task.title;
+  $('#renameTaskForm').classList.add('hidden');
+  $('#taskTitle').classList.remove('hidden');
+  $('#renameTask').classList.remove('hidden');
   const version = task.checkpoint_record?.version || 0;
   const total = task.continuation?.total_messages || task.messages.length;
   $('#taskCheckpoint').textContent = version ? `Memória local v${version} • ${plural(total, 'mensagem', 'mensagens')}` : 'Memória local pronta para começar.';
@@ -307,6 +361,40 @@ async function openTask(id) {
     recovery.textContent = '';
   }
   await loadTasks();
+}
+
+function toggleTaskRename(editing) {
+  $('#renameTaskForm').classList.toggle('hidden', !editing);
+  $('#taskTitle').classList.toggle('hidden', editing);
+  $('#renameTask').classList.toggle('hidden', editing);
+  if (editing) {
+    $('#renameTaskInput').value = currentTask?.title || '';
+    $('#renameTaskInput').focus();
+    $('#renameTaskInput').select();
+  }
+}
+
+async function saveTaskRename(event) {
+  event.preventDefault();
+  if (!currentTaskId) return;
+  const taskId = currentTaskId;
+  const title = $('#renameTaskInput').value.trim();
+  if (!title) return;
+  const submit = $('#renameTaskForm').querySelector('[type="submit"]');
+  submit.disabled = true;
+  try {
+    const updated = await window.ordax.renameTask(taskId, title);
+    if (currentTaskId === taskId) {
+      currentTask = updated;
+      $('#taskTitle').textContent = updated.title;
+      toggleTaskRename(false);
+    }
+    await loadTasks();
+  } catch (error) {
+    $('#providerDetail').textContent = friendlyError(error);
+  } finally {
+    submit.disabled = false;
+  }
 }
 
 async function createTask() {
@@ -414,6 +502,9 @@ function setContextOpen(open) {
 }
 
 $('#newTask').addEventListener('click', createTask);
+$('#renameTask').addEventListener('click', () => toggleTaskRename(true));
+$('#cancelTaskRename').addEventListener('click', () => toggleTaskRename(false));
+$('#renameTaskForm').addEventListener('submit', saveTaskRename);
 document.querySelector('[data-create-task]')?.addEventListener('click', createTask);
 $('#taskSearch').addEventListener('input', renderTaskList);
 $('#rotateConversation').addEventListener('click', rotateConversation);
@@ -443,6 +534,7 @@ $('#toggleContext').addEventListener('click', () => setContextOpen(!$('#contextR
 $('#closeContext').addEventListener('click', () => setContextOpen(false));
 window.addEventListener('keydown', event => {
   if (event.key !== 'Escape') return;
+  if (!$('#renameTaskForm').classList.contains('hidden')) { toggleTaskRename(false); return; }
   if (!$('#memoryEditor').classList.contains('hidden')) { setMemoryEditor(false); return; }
   if ($('#contextRail').classList.contains('open')) setContextOpen(false);
 });
@@ -483,15 +575,21 @@ $('#composer').addEventListener('submit', async event => {
   const input = $('#prompt');
   const content = input.value.trim();
   if (!content) return;
-  const submittingTaskId = currentTaskId;
+  if (submittingTaskId) return;
+  const taskId = currentTaskId;
+  flushDraft();
+  const draftRevision = Math.max(draftCache.get(taskId)?.revision || 0, Number(currentTask?.draft_revision || 0)) + 1;
+  draftCache.set(taskId, { content:'', revision:draftRevision });
+  submittingTaskId = taskId;
   input.value = '';
   input.style.height = '';
+  $('#draftState').textContent = '';
   $('#runStatus').textContent = currentTask?.chat_url ? 'Enviando…' : currentTask?.messages?.length ? 'Abrindo nova conversa com memória…' : 'Enviando…';
   $('#runStatus').classList.remove('hidden');
   $('#send').disabled = true;
   try {
-    const { task } = await window.ordax.send({ taskId: submittingTaskId, content });
-    if (currentTaskId === submittingTaskId) {
+    const { task } = await window.ordax.send({ taskId, content, draftRevision });
+    if (currentTaskId === taskId) {
       currentTask = task;
       $('#messages').innerHTML = task.messages.map(messageHtml).join('');
       $('#messages').scrollTop = $('#messages').scrollHeight;
@@ -503,16 +601,17 @@ $('#composer').addEventListener('submit', async event => {
     await loadTasks();
   } catch (error) {
     const message = friendlyError(error);
-    if (currentTaskId === submittingTaskId) {
-      await openTask(submittingTaskId).catch(() => null);
+    if (currentTaskId === taskId) {
+      await openTask(taskId).catch(() => null);
       $('#messages').insertAdjacentHTML('beforeend', `<article class="message error"><div class="message-body"><div class="message-role">Erro</div><div class="message-content">${esc(message)}</div></div></article>`);
       $('#messages').scrollTop = $('#messages').scrollHeight;
     }
   } finally {
     $('#runStatus').classList.add('hidden');
     $('#runStatus').textContent = '';
+    submittingTaskId = null;
     $('#send').disabled = false;
-    input.focus();
+    if (currentTaskId === taskId) input.focus();
     refreshProvider();
   }
 });
@@ -521,7 +620,14 @@ $('#prompt').addEventListener('input', event => {
   const input = event.currentTarget;
   input.style.height = 'auto';
   input.style.height = `${Math.min(input.scrollHeight, 150)}px`;
+  stageDraft();
 });
+$('#prompt').addEventListener('draft-restored', () => {
+  const input = $('#prompt');
+  input.style.height = 'auto';
+  input.style.height = `${Math.min(input.scrollHeight, 150)}px`;
+});
+window.addEventListener('pagehide', flushDraft);
 $('#prompt').addEventListener('keydown', event => {
   if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); $('#composer').requestSubmit(); }
 });

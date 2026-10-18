@@ -140,7 +140,7 @@ function persistImages(taskId, messageId, images = []) {
   return out;
 }
 
-async function runTask(taskId, prompt, { newSession = false } = {}) {
+async function runTask(taskId, prompt, { newSession = false, draftRevision = null } = {}) {
   const task = store.getTask(taskId);
   if (!task) throw new Error('task_not_found');
 
@@ -149,6 +149,8 @@ async function runTask(taskId, prompt, { newSession = false } = {}) {
   const checkpointVersion = task.checkpoint_record?.version || 0;
   const providerPrompt = needsContinuation ? store.buildContinuationPrompt(taskId, prompt) : prompt;
   const userMessage = store.appendMessage(taskId, 'user', prompt);
+  // The user's text is durable as a message before clearing its pending draft.
+  if (draftRevision != null) store.setDraft(taskId, '', draftRevision);
   const runId = store.startRun(taskId, 'electron-embedded-chatgpt', observerMode);
   liveRun = { taskId, runId, startedAt:Date.now(), firstDeltaAt:null };
   if (win && !win.isDestroyed()) win.webContents.send('ordax:task:run-started', { taskId, runId, userMessage });
@@ -276,6 +278,10 @@ ipcMain.handle('ordax:workspace:get', () => store.getWorkspaceSession());
 ipcMain.handle('ordax:tasks:list', () => store.listTasks());
 ipcMain.handle('ordax:tasks:create', (_event, title) => decorateTask(store.createTask(String(title || 'Nova tarefa'))));
 ipcMain.handle('ordax:tasks:get', (_event, id) => decorateTask(store.getTask(String(id))));
+ipcMain.handle('ordax:tasks:rename', (_event, { taskId, title }) =>
+  decorateTask(store.renameTask(String(taskId), title)));
+ipcMain.handle('ordax:tasks:draft:set', (_event, { taskId, content, revision }) =>
+  store.setDraft(String(taskId), content, revision));
 ipcMain.handle('ordax:tasks:open', async (_event, id) => {
   const task = store.getTask(String(id));
   if (chatVisible && task?.chat_url) await worker.showConversation(task.chat_url).catch(() => {});
@@ -336,10 +342,10 @@ ipcMain.handle('ordax:chat:visible', (_event, visible) => {
   layoutViews();
   return chatVisible;
 });
-ipcMain.handle('ordax:tasks:send', async (_event, { taskId, content, newSession = false }) => {
+ipcMain.handle('ordax:tasks:send', async (_event, { taskId, content, newSession = false, draftRevision = null }) => {
   const prompt = String(content || '').trim();
   if (!prompt) throw new Error('content_required');
-  return enqueueExecution(() => runTask(String(taskId), prompt, { newSession: Boolean(newSession) }));
+  return enqueueExecution(() => runTask(String(taskId), prompt, { newSession: Boolean(newSession), draftRevision }));
 });
 
 app.whenReady().then(async () => {

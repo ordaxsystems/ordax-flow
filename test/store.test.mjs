@@ -40,6 +40,59 @@ test('Task, workspace session and versioned checkpoint survive reopen', t => {
   assert.deepEqual(restored.messages.map(m => [m.role, m.content]), [['user', 'ping'], ['assistant', 'pong']]);
 });
 
+test('per-Task drafts persist across restart, reject stale saves and never enter provider context', t => {
+  const { dir, dbPath } = tempStore();
+  let store = new Store(dbPath);
+  cleanup(t, dir, () => store);
+  const first = store.createTask('Projeto A');
+  const second = store.createTask('Projeto B');
+  const originalOrder = store.listTasks().map(task => task.id);
+  const originalTimestamp = store.getTask(first.id).updated_at;
+
+  assert.equal(store.setDraft(first.id, 'Ideia ainda não enviada', 1).draft_revision, 1);
+  store.setDraft(second.id, 'Outra tarefa', 1);
+  store.setDraft(first.id, 'Texto novo', 3);
+  store.setDraft(first.id, 'Retorno atrasado', 2);
+  assert.equal(store.getTask(first.id).draft, 'Texto novo');
+  assert.equal(store.getTask(first.id).draft_revision, 3);
+  assert.equal(store.getTask(second.id).draft, 'Outra tarefa');
+  assert.equal(store.getTask(first.id).updated_at, originalTimestamp);
+  assert.deepEqual(store.listTasks().map(task => task.id), originalOrder);
+  assert.doesNotMatch(store.buildContinuationPrompt(first.id, 'Continue'), /Texto novo/);
+
+  store.close();
+  store = new Store(dbPath);
+  assert.equal(store.getTask(first.id).draft, 'Texto novo');
+  assert.equal(store.getTask(first.id).draft_revision, 3);
+  store.appendMessage(first.id, 'user', 'Texto novo');
+  store.setDraft(first.id, '', 5);
+  store.setDraft(first.id, 'Salvamento antigo', 4);
+  assert.equal(store.getTask(first.id).draft, '');
+  assert.deepEqual(store.getTask(first.id).messages.map(row => row.content), ['Texto novo']);
+  assert.throws(() => store.setDraft(first.id, 'x', 0), /invalid_task_draft_revision/);
+  assert.throws(() => store.setDraft(first.id, 'x'.repeat(20001), 6), /task_draft_too_large/);
+  assert.throws(() => store.setDraft('task_missing', 'x', 1), /task_not_found/);
+});
+
+test('project rename updates navigation title without touching draft or losing history', t => {
+  const { dir, dbPath } = tempStore();
+  const store = new Store(dbPath);
+  cleanup(t, dir, () => store);
+  const task = store.createTask('Nova conversa');
+  store.setDraft(task.id, 'Por enviar', 1);
+  store.appendMessage(task.id, 'user', 'Objetivo original');
+  const updated = store.renameTask(task.id, '  Projeto   Contínuo  ');
+  assert.equal(updated.title, 'Projeto Contínuo');
+  assert.equal(updated.draft, 'Por enviar');
+  assert.equal(updated.messages.length, 1);
+  assert.equal(store.listTasks()[0].title, 'Projeto Contínuo');
+  assert.match(store.buildContinuationPrompt(task.id, 'Retomar'), /Projeto Contínuo/);
+  assert.equal(store.renameTask(task.id, 'Projeto Contínuo').events.filter(row => row.kind === 'task.renamed').length, 1);
+  assert.throws(() => store.renameTask(task.id, '   '), /invalid_task_title/);
+  assert.throws(() => store.renameTask(task.id, 'z'.repeat(141)), /invalid_task_title/);
+  assert.throws(() => store.renameTask('task_missing', 'Valid'), /task_not_found/);
+});
+
 test('Interrupted run is explicit and resumable after reopen', t => {
   const { dir, dbPath } = tempStore();
   let store = new Store(dbPath);

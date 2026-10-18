@@ -123,6 +123,32 @@ test('OrdaX UI exposes responsive conversation, chat and context columns', () =>
   assert.match(css, /@media \(max-width:620px\)/);
 });
 
+test('drafts are scoped to a Task, revision-guarded and saved without entering provider memory', () => {
+  const store = fs.readFileSync(path.join(root, 'src', 'store.mjs'), 'utf8');
+  const html = fs.readFileSync(path.join(root, 'desktop', 'ui.html'), 'utf8');
+  assert.match(store, /draft_revision<\?/);
+  assert.match(preload, /setDraft/);
+  assert.match(main, /ordax:tasks:draft:set/);
+  assert.match(main, /store\.setDraft\(taskId, '', draftRevision\)/);
+  assert.match(ui, /draftCache/);
+  assert.match(ui, /flushDraft/);
+  assert.match(ui, /navigationEpoch/);
+  assert.match(ui, /draftRevision/);
+  assert.match(html, /draftState/);
+  assert.doesNotMatch(ui, /localStorage|sessionStorage/);
+});
+
+test('project titles can be renamed from the chat header and are persisted in Tasks', () => {
+  const store = fs.readFileSync(path.join(root, 'src', 'store.mjs'), 'utf8');
+  const html = fs.readFileSync(path.join(root, 'desktop', 'ui.html'), 'utf8');
+  assert.match(store, /renameTask\(taskId, title\)/);
+  assert.match(main, /ordax:tasks:rename/);
+  assert.match(preload, /renameTask/);
+  assert.match(ui, /saveTaskRename/);
+  assert.match(html, /id="renameTask"/);
+  assert.match(html, /id="renameTaskForm"/);
+});
+
 test('persistent Task memory can rotate provider conversations without losing the project', () => {
   const store = fs.readFileSync(path.join(root,'src','store.mjs'),'utf8');
   assert.match(store, /task_conversations/);
