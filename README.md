@@ -1,4 +1,8 @@
-# OrdaX Flow (OrdaX Grátis 0.4.12 — versão de transição)
+# OrdaX Flow — Client + Hub (desktop legado 0.4.12)
+
+**Dois aplicativos, um único gateway de IA:** `apps/flow-client/` é a experiência do usuário; `apps/flow-hub/` é o painel da central e exige RBAC. Ambas as interfaces compartilham o contrato de `src/relay/`, sem replicar identidade, cotas ou histórico. [Arquitetura e status real](docs/FLOW-CLIENT-HUB.md). Os novos shells ainda não têm adapters reais de conta OrdaX, histórico central ou provedor comercial.
+
+O app Electron descrito abaixo é o laboratório 0.4.12, não o Flow Client multiusuário pronto para lançamento.
 
 O repositório privado `ordaxsystems/ordax-flow` é o remoto canônico do produto Flow. A versão desktop 0.4.12 é o **legado de testes** com ChatGPT Web; o Flow multiusuário da central deve evoluir para API autorizada, conta OrdaX e quotas individuais, conforme `docs/FLOW-ARCHITECTURE.md`. Nenhuma dependência do OrdaX OS ou do Studio.
 

@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OrdaX Flow Hub — Central</title><link rel="stylesheet" href="/shared/styles.css"></head>
+<body><div class="layout"><aside>
+  <div class="brand">OrdaX <span>Flow Hub</span></div>
+  <p class="tagline">Central de operação, governança e roteamento. Acesso exclusivo de operadores autorizados.</p>
+  <hr class="divider"><p class="kicker">Visão operacional</p>
+  <p class="muted small">A central não é a conversa de um usuário. Ela coordena o serviço sem expor conteúdo de mensagens.</p>
+  <p class="muted small">Controle de cotas, filas e políticas será integrado pelos contratos canônicos da plataforma.</p>
+</aside><main>
+  <div class="row space-between"><p class="kicker">Painel da central</p><span class="chip">Operador</span></div>
+  <h1>OrdaX Flow Hub</h1>
+  <div class="row space-between"><p id="state" class="status" role="status" aria-live="polite">Validando credenciais e permissões…</p>
+  <button id="refresh" type="button">Atualizar indicadores</button></div>
+  <section class="metrics" id="metrics" aria-label="Indicadores agregados">
+    <div class="surface metric"><strong id="activeUsers">—</strong><span>Usuários ativos</span></div>
+    <div class="surface metric"><strong id="activeDevices">—</strong><span>Dispositivos ativos</span></div>
+    <div class="surface metric"><strong id="totalProjects">—</strong><span>Projetos</span></div>
+    <div class="surface metric"><strong id="completedRequests">—</strong><span>Mensagens concluídas</span></div>
+    <div class="surface metric"><strong id="failedRequests">—</strong><span>Requisições com falha</span></div>
+    <div class="surface metric"><strong id="pendingRequests">—</strong><span>Requisições em fila</span></div>
+  </section>
+  <section class="surface"><h2>Segurança e visibilidade</h2>
+    <p class="muted">Este painel recebe apenas métricas agregadas. Não apresenta textos, prompts, credenciais, emails ou mensagens privadas dos usuários.</p>
+    <p class="muted small">Indicadores indisponíveis significam ausência de conexão ou autorização. Nunca são substituídos por números fictícios.</p>
+  </section>
+</main></div><script type="module" src="/hub/app.mjs"></script></body></html>

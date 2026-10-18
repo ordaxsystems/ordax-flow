@@ -1,5 +1,7 @@
 # OrdaX Flow — arquitetura canônica e limites de produto
 
+**Divisão operacional aprovada:** [Flow Client + Flow Hub](FLOW-CLIENT-HUB.md), dois aplicativos visíveis sobre um único gateway e contratos canônicos. O Hub é um painel administrativo, não uma segunda IA, um segundo banco ou uma sessão ChatGPT compartilhada.
+
 Decisão de produto: 17/10/2026. Repositório oficial: `ordaxsystems/ordax-flow` (privado). O histórico local de desenvolvimento migra para este repositório; novos commits devem ser enviados ao remoto, sem clones divergentes como fonte de verdade.
 
 ## Produtos independentes

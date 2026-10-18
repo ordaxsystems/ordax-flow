@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OrdaX Flow — Cliente</title><link rel="stylesheet" href="/shared/styles.css"></head>
+<body><div class="layout"><aside>
+  <div class="brand">OrdaX <span>Flow</span></div><p class="tagline">Seus projetos e conversas com IA, em vários dispositivos.</p>
+  <hr class="divider"><p class="kicker">Seus projetos</p>
+  <nav id="projects" aria-label="Projetos"><p class="small muted">Conectando à conta OrdaX…</p></nav>
+  <hr class="divider"><p class="small muted">Conta e permissões pertencem à central OrdaX. Nenhuma conta ChatGPT é necessária.</p>
+</aside><main>
+  <div class="row space-between"><p class="kicker">Flow Client</p><span class="chip">Usuário</span></div>
+  <h1 id="heading">Seu espaço de trabalho</h1>
+  <p id="state" class="status" role="status" aria-live="polite">Carregando projetos autorizados…</p>
+  <section class="surface" aria-label="Conversa">
+    <h2>Conversa</h2><p class="muted small">Prévia operacional. Histórico completo e sincronização entre dispositivos aguardam integração ao SSOT central.</p>
+    <div id="thread" class="thread" role="log" aria-live="polite"></div>
+    <form id="composer" class="compose">
+      <label for="prompt" class="small">Mensagem ao projeto selecionado</label>
+      <textarea class="input" id="prompt" maxlength="24000" required placeholder="Digite sua mensagem…" disabled></textarea>
+      <div class="row space-between"><span class="muted small" id="selected">Selecione um projeto.</span><button class="primary" id="send" type="submit" disabled>Enviar</button></div>
+    </form>
+  </section>
+</main></div><script type="module" src="/client/app.mjs"></script></body></html>
