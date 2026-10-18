@@ -119,7 +119,11 @@ function friendlyError(error) {
   const raw = String(error?.message || error || 'Erro desconhecido');
   const code = raw.match(/Error: ([a-z0-9_]+)/i)?.[1] || raw;
   const messages = {
-    chatgpt_draft_present: 'Há um rascunho no ChatGPT. Envie ou apague esse rascunho antes de executar.',
+    chatgpt_draft_present: 'Esta conversa já existente tem um rascunho no ChatGPT. Preserve ou apague o texto antes de continuar; ao criar uma nova conversa, o worker prepara um campo vazio.',
+    new_chat_composer_unavailable: 'A nova conversa abriu, mas o campo de mensagem do ChatGPT não ficou pronto.',
+    new_chat_composer_focus_failed: 'Não foi possível selecionar o editor da nova conversa do ChatGPT.',
+    new_chat_composer_clear_failed: 'O ChatGPT recusou a limpeza do rascunho antigo na nova conversa. Nada foi enviado.',
+    new_chat_composer_not_empty: 'O campo do ChatGPT não ficou vazio após criar a nova conversa. Nada foi enviado; verifique a página oficial.',
     chatgpt_verification_required: 'O ChatGPT exige uma verificação oficial. Conclua-a no modo direto e tente novamente.',
     chatgpt_login_required: 'Entre na sua conta do ChatGPT para continuar.',
     chatgpt_authentication_in_progress: 'Conclua o login antes de enviar.',
