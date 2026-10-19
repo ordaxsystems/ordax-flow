@@ -1,5 +1,27 @@
 # OrdaX Flow — arquitetura canônica e limites de produto
 
+
+## Direção atual de integração com IA — 2026-10-19 (prioridade)
+
+**Objetivo definido pelo proprietário:** o mecanismo existente de conexão direta com uma sessão pessoal de chat (demonstrado no Electron OrdaX Grátis 0.4.12) deve ser a base a **reutilizar, por contrato**, no aplicativo principal, no Studio, no Flow desktop e em outros aplicativos compatíveis. **Eles não dependem de uma API paga de modelo para a funcionalidade básica.** Não copiar o worker/DOM/WebContents do Electron para cada app, não criar um servidor concorrente e não declarar suporte a provedores que ainda não passaram por integração e testes.
+
+**Uma única integração a API de modelo é considerada para esta fase:** a inteligência supervisora/planejadora do aplicativo principal (nome provisório OrdaX Pilot), por exemplo Groq para distribuição de tarefas. Esse modelo planeja; não substitui o ChatGPT Web do usuário, não concede ações MCP, não habilita automaticamente execução do Runtime e não torna todos os aplicativos dependentes da sua chave. A configuração e o custeio são explícitos; sem chave, a experiência de chat existente deve continuar funcionando.
+
+| Superfície | Canal atual/pretendido | API de modelo obrigatória? |
+| --- | --- | --- |
+| OrdaX Grátis / futuro Pilot desktop | Sessão de chat pessoal via integração desktop existente; Supervisor API somente quando ativado | Não para chat básico |
+| OrdaX Studio desktop | Conector de chat pessoal por contrato de host com sessão própria e escopo autorizado | Não |
+| OrdaX Flow desktop | Integração de chat pessoal reutilizada da base existente | Não |
+| Outros apps desktop compatíveis | Adaptador/contrato compartilhado de chat; sem herdar credenciais de outro app | Não |
+| Flow Client + Hub multiusuário (projeto anterior) | **Arquitetura futura distinta:** backend central de APIs de modelos autorizadas, usuários e cotas individuais | Sim **somente se esse produto central for efetivamente lançado**; não é requisito dos apps desktop agora |
+
+**Não confundir os dois projetos:** o Flow desktop local 0.4.12 já funciona como laboratório com sessão pessoal, enquanto os diretórios apps/flow-client e apps/flow-hub implementam contratos iniciais para outra proposta multiusuário. A decisão de 18/10/2026, preservada abaixo, descreve **essa proposta central futura**, não uma obrigação de instalar o Hub, fornecer chave de modelo ou usar API de inferência para abrir o Grátis, Studio ou Flow desktop. Nenhuma instância compartilhada de ChatGPT Web deve ser usada para prestar serviço multiusuário.
+
+**Boundary do sistema compartilhado:** o conector do chat é específico do host/provedor, não SSOT de modelo, autorização ou execução. Sessões, cookies e credenciais não são compartilhados entre usuários/aplicativos sem consentimento. Na fase atual o worker real somente conhece ChatGPT Web; Grok, Claude e outros chats exigem adaptações próprias, comprovação de compatibilidade e uso permitido. O laboratório Web atual não equivale a API oficial, confiabilidade contratual ou suporte de produção. O OrdaX MCP permanece genérico; OrdaX Platform fornece grants/identidade e o Runtime executa ações autorizadas com auditoria. O agente não recebe privilégios porque um chat foi conectado.
+
+**Política de evolução:** consolidar primeiro as capacidades verificadas do desktop, especificar um único contrato cliente para a interação com chats e implementar adapters de host sem duplicação. API de modelos no planejador é capacidade isolada e opt-in. O futuro Flow Central multiusuário fica fora desse corte até uma decisão explícita de ativação, com testes próprios de identidade, cotas e custos.
+
+
 ## Decisão canônica — fluxo de conversas e MCP (18/10/2026)
 
 **Modelo mental obrigatório em conversas futuras:** o Flow Client é o chat do usuário; o Flow Hub é a central que **recebe** a solicitação, **encaminha** ao provedor de IA autorizado, **recebe** a resposta e **a distribui ao cliente certo**. A central mantém roteamento, identidade, cotas, histórico, memória e continuidade. Não exigir Studio, MCP, Runtime ou OrdaX OS para um chat normal.
@@ -65,7 +87,7 @@ Decisão de produto: 17/10/2026. Repositório oficial: `ordaxsystems/ordax-flow`
 | --- | --- | --- |
 | OrdaX Grátis | Nome e identidade de instalação do laboratório desktop 0.4.12 existente em `desktop/`, **neste repositório** | Preservar `br.com.ordax.gratis`, userData e SQLite até migração explícita e reversível; não declarar renomeação do binário já instalada |
 | OrdaX Pilot (nome de produto proposto) | Experiência desktop completa de projetos, chat e orquestração, a evoluir a partir do desktop atual, **neste repositório** | O nome não constitui app, banco, serviço, release ou novo repositório. A marca pública só muda com migração de dados, installer, shortcuts, testes e rollback |
-| OrdaX Flow Client | Cliente multiusuário de conversas/projetos em `apps/flow-client/` | Consome API/contratos autorizados do Flow; não importa o worker Electron nem exige Studio/OS |
+| OrdaX Flow Client | Proposta de cliente multiusuário em `apps/flow-client/`, **não requisito do Flow desktop atual** | Consome API/contratos autorizados do projeto central futuro, se ativado; não importa o worker Electron nem exige Studio/OS |
 | OrdaX Flow Hub | Operação/RBAC em `apps/flow-hub/` | UI administrativa, não outro executor, IA, model router ou banco |
 | OrdaX GPT | **Candidato à retirada como produto standalone**; código histórico em `ordaxsystems/ordax-gpt` | Não adicionar dependência de runtime nem abrir novo motor concorrente; preservar fontes até avaliação e transferência dos invariantes exclusivos |
 | OrdaX Studio | Experiência de desenvolvimento em `ordaxsystems/ordax-apps`, host Windows no Runtime | Cliente de capacidades públicas; não absorver dono de tarefas Flow, identidade ou executor |
@@ -94,6 +116,6 @@ Matriz de tratamento dos pacotes de `ordax-gpt`:
 
 ### Fronteira de autorização e modelos
 
-A amplitude funcional do aplicativo é configurável, mas não revoga autorizações do sistema. O laboratório ChatGPT Web permanece experimental, usa sessão pessoal e não se torna backend de produção multiusuário. Flow Hub usa APIs oficiais, autenticação própria do produto, cotas por identidade e idempotência; um plano ChatGPT Web não substitui chaves/API. Ferramentas reais são executadas pelo OrdaX Runtime/MCP com grants, alvo e recibos válidos, jamais por texto gerado pelo modelo.
+A amplitude funcional do aplicativo é configurável, mas não revoga autorizações do sistema. O laboratório ChatGPT Web permanece experimental, usa sessão pessoal e não se torna backend de produção multiusuário. Se o Flow Hub **multiusuário futuro** for ativado, deverá usar APIs oficiais, autenticação própria do produto, cotas por identidade e idempotência. Essa exigência do produto central não se aplica ao Flow desktop, Pilot ou Studio usando suas sessões pessoais; um plano ChatGPT Web não substitui chaves/API em serviços multiusuário. Ferramentas reais são executadas pelo OrdaX Runtime/MCP com grants, alvo e recibos válidos, jamais por texto gerado pelo modelo.
 
 **Ponto único de decisão de produto:** este arquivo. Em `ordax-gpt`, a documentação deve apontar para esta seção e identificar seu roteiro próprio como histórico/em transição, sem manter outra decisão conflitante.
