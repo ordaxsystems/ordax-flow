@@ -1,4 +1,6 @@
-# Flow Client e Flow Hub — separação de produtos
+# Flow Client e Flow Hub — superfícies externas sobre orquestração compartilhada
+
+> **Decisão atual de 19/10/2026:** este documento detalha a primeira implementação de entrada HTTP, cliente e painel para usuários externos. **Não deve ser interpretado como segundo motor de agentes.** O ambiente interno de evolução do OrdaX e o ambiente externo multiusuário utilizarão **o mesmo núcleo lógico de Task, Run, agentes, checkpoints e ferramentas**, mas com dados, identidades, grants, filas/escopos e autorizações isolados. O externo recebe requisições; o interno coordena seu próprio desenvolvimento. API HTTP de entrada não é sinônimo de API paga de inferência. Modelos oficiais podem ser usados conforme autorização, mas não deve existir uma sessão ChatGPT pessoal compartilhada entre usuários. As partes de router exclusivo descritas abaixo são históricas e devem ser reconciliadas com [a SSOT atual](FLOW-ARCHITECTURE.md#ssot-atual--um-motor-dois-ambientes-de-orquestração-19102026). Esta revisão não afirma que o backend externo esteja implantado.
 
 ## Decisão canônica — fluxo de conversas e MCP (18/10/2026)
 
