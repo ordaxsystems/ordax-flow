@@ -1,44 +1,46 @@
 # OrdaX Flow — arquitetura canônica e limites de produto
 
 
-## SSOT atual — um motor, dois ambientes de orquestração (19/10/2026)
+## SSOT atual — um mecanismo de chats, controle manual ou por supervisor (19/10/2026)
 
-**Correção de escopo do proprietário (prioridade sobre as decisões datadas abaixo):** não existem dois motores de agentes ou duas soluções de IA independentes. A proposta é **um único núcleo de tarefas/agentes/continuidade**, reutilizado por dois **ambientes de operação com autoridade e dados isolados**. O nome comercial "OrdaX Pilot" e o nome de trabalho "OrdaX Evolution" são provisórios; nenhum implica criar repositório, segundo banco ou segundo executor.
+**Correção explícita do proprietário, prevalecendo sobre as decisões históricas abaixo:** TODOS os aplicativos OrdaX participantes usam **o mesmo mecanismo de conexão e gerenciamento de chats já implementado em OrdaX Flow / OrdaX Grátis**. Não se cria um worker/chat engine novo para Studio, Pilot, Flow ou multiusuário. A diferença é **quem comanda esse mecanismo**: pessoa (manual) ou supervisor por API de modelo (automático).
 
-### Ambiente interno — evolução do OrdaX
+| Aplicativo / ambiente | Mesmo mecanismo de chat Flow/Grátis | Quem administra chats e tarefas | API de modelo para supervisão |
+| --- | --- | --- | --- |
+| OrdaX interno (ambiente de evolução, nome comercial a definir) | Sim | Supervisor automático, com intervenção e aprovações conforme políticas | **Sim**, dedicada à coordenação dos chats e tarefas (ex.: Groq) |
+| Multiusuário (requisições externas, via Flow Client/Hub) | Sim, pelo mesmo contrato/implementação compartilhável | Supervisor automático, isolado por cliente e requisição | **Sim**, mesma capacidade de supervisão, com instância/configuração e limites por cliente |
+| OrdaX Studio | Sim | **Usuário manualmente** | **Não é obrigatória** |
+| OrdaX Flow desktop / OrdaX Grátis manual | Sim | **Usuário manualmente** | **Não é obrigatória** |
+| Outros aplicativos OrdaX | Sim, quando oferecerem chat | **Usuário manualmente**, a menos que o produto habilite explicitamente supervisão | **Não é obrigatória** |
 
-- **Finalidade:** um ambiente de trabalho próprio, permanente e restrito ao proprietário, dedicado a investigar, construir, testar, revisar e evoluir OrdaX OS, Studio, Flow, MCP, Runtime, Apps e demais projetos autorizados.
-- **Origem das tarefas:** objetivos internos, backlog, decisões, dependências, resultados de testes e checkpoints do próprio ambiente, não requisições externas de clientes. O supervisor planeja, prioriza, distribui trabalho a agentes por projeto/área, reconcilia efeitos e sugere ou inicia próximas ações elegíveis dentro de políticas predefinidas.
-- **Integração de IA:** o sistema atual de interação com chats pessoais, hoje implementado no Electron Grátis, é a base a adaptar e reutilizar por contrato. **A integração inicial prevista com API de modelo (ex.: Groq) pertence ao supervisor/orquestrador interno** e não substitui todos os provedores de chat nem obriga Studio/Flow desktop a ter uma chave de API de modelo.
-- **Execução:** ChatGPT/outros chats compatíveis e ferramentas autorizadas via GitHub, OrdaX MCP e Runtime. A inteligência que planeja **não ganha grants** por gerar instruções. Falhas, limite de contexto, envio incerto, cancelamento ou desconexão mantêm Task/checkpoint/evidência até reconciliação, sem repetição cega.
-- **Autonomia:** tarefas podem continuar automaticamente **somente enquanto existe executor conectado e autorizado**, com limites explícitos de custo, ferramentas, concorrência, políticas, escopo, revisão de PR e segurança. Não prometer trabalho em background sem runtime/serviço disponível.
+### O que é o mecanismo compartilhado
 
-### Ambiente externo — orquestração multiusuário
+Fonte técnica atual: `ordaxsystems/ordax-flow`, incluindo o desktop Grátis em `desktop/`, estado de Task/Run/SQLite, checkpoints e continuidade, observação e envio do ChatGPT Web. O projeto OrdaX Grátis instalado foi comparado com a `main` do Flow em sete arquivos críticos, com conteúdo idêntico. Isso **não** significa que já exista um pacote extraído e testado para todos os hosts ou que outros provedores estejam integrados.
 
-- **Finalidade:** aceitar demandas externas de usuários, empresas, outros aplicativos e integrações e executá-las pelo **mesmo motor lógico de tarefas/agentes/continuidade**, mas sob políticas de produto e autorização específicas.
-- **Origem das tarefas:** requisições autenticadas, APIs de entrada, UI cliente ou eventos externos; isso **não** significa necessariamente consumir uma API paga de modelo. **API de entrada de solicitações != API de inferência de IA**. O plano de provedores de IA deve ser escolhido pelo produto/usuário quando implementado e autorizado.
-- **Isolamento:** identidade, tenant, workspace, permissões, orçamento/cota, credenciais, dados, filas e resultados são vinculados ao sujeito verificado, sem acesso aos repositórios ou ao contexto privilegiado do ambiente interno. Jamais compartilhar a sessão pessoal ChatGPT do proprietário para executar tarefas de clientes.
-- **Integração de chats:** adaptar o mesmo contrato para provedores/sessões legitimamente autorizados por cliente, **se** as capacidades e termos de uso permitirem; onde isso não for viável, oferecer integração oficial por API de modelo, com custos e credenciais adequados. O laboratório ChatGPT Web existente **não** comprova um backend SaaS multiusuário.
-- **Flow Client/Hub:** as telas e o relay existentes são *superfícies de entrada/operação* que devem convergir ao motor compartilhado, e não constituir um segundo supervisor ou banco concorrente. A documentação de 18/10/2026 representa a primeira proposta de transporte multiusuário, não a obrigação de manter arquitetura de inferência separada.
+**Alvo de engenharia:** expor um contrato versionado do mecanismo já existente para `openConversation`, `prepare`, `submit`, `observe`, `cancel`, `status`, `checkpoint` e `resume` (nomes conceituais, NÃO endpoints atualmente publicados). Adapters específicos de host/provedor encapsulam a integração Electron/Web; apps consumidores configuram a interface e as funcionalidades que precisam. Não duplicar DOM, transporte, persistência canônica, regras de envio, executor ou política de autorização em cada aplicativo. Não exigir que Studio importe um executável ou SQLite particular do Grátis.
 
-### Núcleo compartilhado e fronteiras canônicas
+### A única variação: controle de tarefas/conversas
 
-| Responsabilidade | Único owner ou contrato |
-| --- | --- |
-| Task, Run, agente, fila, checkpoint, continuidade, reconciliação, evidência e auditoria de trabalho | **Um motor de orquestração** a consolidar a partir das implementações existentes no repositório Flow/Grátis, aproveitando invariantes realmente ausentes do GPT; nunca dois Task writers para o mesmo escopo |
-| Entrada e configuração do ambiente interno | Aplicativo desktop completo derivado do Grátis; configurações restritas ao owner |
-| Entrada externa, autenticação, RBAC, cota e roteamento de solicitante | Flow Client/Hub e contratos/autoridade da Platform, sem duplicar conta ou grants |
-| Chat por conta, sessão, transporte e integração de provedor | Contrato compartilhável com adapters por host e provedor, isolamento por usuário/aplicativo; o executor Electron/DOM é um laboratório existente, não backend universal |
-| Modelo do supervisor (quando habilitado) | Adapter de API de modelo do orquestrador; separado da API HTTP de solicitações |
-| Permissões, dispositivo, execução real e resultados de ferramentas | Platform/OrdaX MCP + Runtime; o orquestrador consome grants/recibos, não executa por autoridade de prompt |
-| OrdaX Intelligence/OS | Inteligência e memória sistêmicas do OS; os apps não copiam esse owner nem fazem o OS depender de Flow |
+**Manual (Studio, Flow desktop, Grátis/manual e demais apps):** o usuário escolhe projeto/chat, escreve, envia, acompanha respostas, cria tarefas e decide quando continuar. O mesmo mecanismo fornece memória/contexto, estado durável, streaming, histórico e tratamento de erros conforme suas capacidades disponíveis. Nenhuma API supervisora precisa ficar ativa para uma conversa manual.
 
-**Sem conflitos de nomes:** agente interno é um papel operacional, **não um Space** de perfil do OrdaX OS. Projeto, Task, Run, segmento de chat, Space de perfil, dispositivo alvo e sessão de provedor são identidades distintas. O aplicativo principal poderá expor agentes "OS", "Studio", "MCP" etc. como configurações, não produtos ou serviços separados.
+**Automático (OrdaX interno e multiusuário):** uma **API de modelo para o supervisor** interpreta metas ou solicitações, planeja e distribui tarefas, escolhe entre chats/provedores permitidos, aciona **o mesmo mecanismo Flow/Grátis**, acompanha respostas, usa checkpoints e decide próximos passos. O supervisor utiliza o conector de chats como cliente, não substitui a integração pelo próprio texto gerado. A API de supervisão não deve virar mais um chat store, mais um executor de ferramentas ou outro Task writer. A mesma implementação lógica de supervisor é configurada em dois ambientes, sem compartilhamento de credenciais ou estado.
 
-**Política de implantação e SSOT:** primeiro fechar o núcleo e o ambiente interno sem regressão do Grátis; depois habilitar entrada externa isolada sobre o mesmo contrato. Reutilizar contratos entre repositórios via versões/adapters, sem exigir que Studio/Flow desktop importem o executável principal ou um banco SQLite específico. Uma futura versão multiusuário pode usar armazenamento central autorizado sem duplicar a autoridade de identidade/memória da Platform. Antes de anunciar qualquer provedor de chat como suportado, validar legalidade de uso, autenticação, recuperação, revogação, envio, streaming e testes reais.
+**OrdaX interno:** recebe metas/backlog do próprio ecossistema e mantém o seu universo persistente de projetos, agentes especializados e tarefas. Pode acionar GitHub, OrdaX MCP e Runtime somente com grants, alvo, limites e recibos autorizados. Automação é condicionada à disponibilidade de executor legítimo; não é autorização irrestrita ou execução garantida em segundo plano.
 
-**Efeito desta decisão:** o modelo central multiusuário com apenas API oficial de inferência, descrito nas seções históricas abaixo, torna-se **uma possível configuração de provedores**, não outro motor nem pré-requisito imposto aos aplicativos. O ponto único de verdade para decisões posteriores é esta seção.
+**Multiusuário:** recebe solicitações externas via Flow Client/Hub/API de entrada autenticada; o supervisor organiza as tarefas de cada cliente usando o mesmo conector de chats e motor lógico de Task/Run. Isolar usuário/tenant, sessões de provedor, projetos, permissões, orçamento, fila/escopo e resultados. **NUNCA** compartilhar a sessão pessoal ChatGPT do proprietário entre usuários. A integração do chat de cada cliente depende de meios autorizados pelo provedor; quando isso não for possível, usar adapter de integração oficial por API de inferência, não automação não autorizada. A API HTTP de **entrada** e a API de modelo que **administra** os chats são responsabilidades diferentes.
 
+### SSOT e limites
+
+- Um owner de conexão com chats e ciclo de vida de Task/Run no Flow/Grátis; a integração GPT standalone entra em aposentadoria após avaliação de recursos exclusivos (Supervisor, leases, effect ledger e recovery), sem remover dados prematuramente.
+- Um contrato de supervisor reutilizável, consumido pelos **dois** ambientes automáticos; dois contextos de autorização/estado independentes, não dois motores.
+- Studio e outros clientes usam apenas o controle **manual** por padrão. Funções avançadas são capacidades opcionais, não forks de código.
+- Identidade/grants e MCP remotos pertencem à OrdaX Platform; execução no dispositivo pertence ao Runtime; OrdaX Intelligence/OS mantém sua autoridade sistêmica. Um modelo nunca concede execução por escrever uma instrução.
+- `Space` continua significando o conceito existente de perfil/ambiente do OrdaX OS; não renomear um agente, fila, tenant ou sessão MCP para `Space`.
+- Hoje apenas o conector ChatGPT Web do laboratório foi demonstrado. Outros chats requerem adapters independentes e testes de compatibilidade, consentimento, segurança, uso permitido, streaming, falhas e reconciliação. Não prometer SaaS sustentado por sessão Web pessoal.
+
+**Ordem:** (1) proteger Grátis/Flow atual e a identidade dos dados; (2) extrair um contrato compartilhado sem código duplicado; (3) comprovar consumo manual por Studio; (4) acoplar um supervisor via API ao mesmo contrato no ambiente interno; (5) reutilizar supervisor/mecanismo no multiusuário com isolamento e autenticação; (6) promover E2E e só então retirar o GPT standalone. A proposta histórica de Flow Hub baseada apenas em API de inferência, abaixo, não prevalece sobre este desenho.
+
+---
 ## Decisão canônica — fluxo de conversas e MCP (18/10/2026)
 
 **Modelo mental obrigatório em conversas futuras:** o Flow Client é o chat do usuário; o Flow Hub é a central que **recebe** a solicitação, **encaminha** ao provedor de IA autorizado, **recebe** a resposta e **a distribui ao cliente certo**. A central mantém roteamento, identidade, cotas, histórico, memória e continuidade. Não exigir Studio, MCP, Runtime ou OrdaX OS para um chat normal.
