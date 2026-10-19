@@ -1,5 +1,9 @@
 # OrdaX Flow — Client + Hub (desktop legado 0.4.12)
 
+
+> **Prioridade de integração 19/10/2026:** o desktop OrdaX Grátis, o futuro aplicativo principal, o Studio e o Flow desktop devem reutilizar, por contrato, a integração de chat pessoal existente; **API de modelo não é pré-requisito para seu chat básico**. A única API de modelo considerada no corte atual é a do supervisor/planejador do aplicativo principal, se ativada. O desenho Flow Client/Hub multiusuário por API, descrito abaixo, é uma arquitetura **futura distinta**, ainda não implantada, e não impõe API aos demais aplicativos. A [decisão canônica mais recente](docs/FLOW-ARCHITECTURE.md#direção-atual-de-integração-com-ia--2026-10-19-prioridade) prevalece para este corte de produto.
+
+
 ## Decisão canônica — fluxo de conversas e MCP (18/10/2026)
 
 **Modelo mental obrigatório em conversas futuras:** o Flow Client é o chat do usuário; o Flow Hub é a central que **recebe** a solicitação, **encaminha** ao provedor de IA autorizado, **recebe** a resposta e **a distribui ao cliente certo**. A central mantém roteamento, identidade, cotas, histórico, memória e continuidade. Não exigir Studio, MCP, Runtime ou OrdaX OS para um chat normal.
