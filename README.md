@@ -1,8 +1,7 @@
 # OrdaX Flow — Client + Hub (desktop legado 0.4.12)
 
 
-> **Prioridade de integração 19/10/2026:** o desktop OrdaX Grátis, o futuro aplicativo principal, o Studio e o Flow desktop devem reutilizar, por contrato, a integração de chat pessoal existente; **API de modelo não é pré-requisito para seu chat básico**. A única API de modelo considerada no corte atual é a do supervisor/planejador do aplicativo principal, se ativada. O desenho Flow Client/Hub multiusuário por API, descrito abaixo, é uma arquitetura **futura distinta**, ainda não implantada, e não impõe API aos demais aplicativos. A [decisão canônica mais recente](docs/FLOW-ARCHITECTURE.md#direção-atual-de-integração-com-ia--2026-10-19-prioridade) prevalece para este corte de produto.
-
+> **Decisão operacional atual (19/10/2026):** haverá **um único motor compartilhado de agentes e tarefas**, operando em **dois ambientes isolados**: (1) OrdaX interno, para evoluir o ecossistema, coordenando chats, agentes, MCP, GitHub e Runtime; a API de modelo inicialmente prevista (ex.: Groq) serve ao seu supervisor; (2) Flow externo multiusuário, que recebe solicitações autenticadas e usa o mesmo motor, com identidade, limites e dados separados. A API HTTP de solicitação externa não é, por si, uma API paga de inferência. A integração de chats pessoais atual é base de reutilização por contrato, não conta compartilhada em um SaaS. O modelo multiusuário apenas-API descrito abaixo é **uma configuração de provedor possível, não outro motor**. Ver [SSOT de orquestração](docs/FLOW-ARCHITECTURE.md#ssot-atual--um-motor-dois-ambientes-de-orquestração-19102026).
 
 ## Decisão canônica — fluxo de conversas e MCP (18/10/2026)
 
