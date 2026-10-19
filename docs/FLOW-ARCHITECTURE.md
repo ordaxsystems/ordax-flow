@@ -53,3 +53,47 @@ Decisão de produto: 17/10/2026. Repositório oficial: `ordaxsystems/ordax-flow`
 - `npm run test:live:typing`: teste de teclado/draft somente na UI OrdaX, sem enviar mensagens ao ChatGPT; não tenta simular pessoa para contornar controles externos.
 - E2Es reais do aplicativo legado são documentados em `docs/E2E-2026-10-17.md`; requerem sessão autorizada.
 - Qualquer teste com múltiplos usuários exige marcadores identificáveis, resultados vinculados a identidade e ausência de vazamento entre projetos. As fixtures devem ser removidas.
+
+
+## Consolidação do desktop e do motor de agentes — decisão 2026-10-19
+
+**Status: decisão de ownership; migração e provas de paridade ainda pendentes.** Esta seção pertence ao mesmo documento canônico de arquitetura do Flow. Não criar outro SSOT, banco, sistema de agentes ou repositório para repetir esta responsabilidade.
+
+### Identidades de produto e implementação
+
+| Nome | Papel e owner | Regra de compatibilidade |
+| --- | --- | --- |
+| OrdaX Grátis | Nome e identidade de instalação do laboratório desktop 0.4.12 existente em `desktop/`, **neste repositório** | Preservar `br.com.ordax.gratis`, userData e SQLite até migração explícita e reversível; não declarar renomeação do binário já instalada |
+| OrdaX Pilot (nome de produto proposto) | Experiência desktop completa de projetos, chat e orquestração, a evoluir a partir do desktop atual, **neste repositório** | O nome não constitui app, banco, serviço, release ou novo repositório. A marca pública só muda com migração de dados, installer, shortcuts, testes e rollback |
+| OrdaX Flow Client | Cliente multiusuário de conversas/projetos em `apps/flow-client/` | Consome API/contratos autorizados do Flow; não importa o worker Electron nem exige Studio/OS |
+| OrdaX Flow Hub | Operação/RBAC em `apps/flow-hub/` | UI administrativa, não outro executor, IA, model router ou banco |
+| OrdaX GPT | **Candidato à retirada como produto standalone**; código histórico em `ordaxsystems/ordax-gpt` | Não adicionar dependência de runtime nem abrir novo motor concorrente; preservar fontes até avaliação e transferência dos invariantes exclusivos |
+| OrdaX Studio | Experiência de desenvolvimento em `ordaxsystems/ordax-apps`, host Windows no Runtime | Cliente de capacidades públicas; não absorver dono de tarefas Flow, identidade ou executor |
+| Intelligence/OS, Platform, Runtime | Ownership sistêmico já publicado nos respectivos repositórios | Flow não recria identidade, grants, MCP, execução do dispositivo ou o router sistêmico do OS; integração entre produtos por contrato versionado |
+
+**Prova de origem:** em 2026-10-19, `package.json`, `desktop/main.mjs`, `desktop/embedded-worker.mjs`, `src/store.mjs`, `src/continuation-context.mjs`, `docs/SSOT.md` e `README.md` do diretório Windows `OrdaX Gratis` foram comparados byte a byte em texto com a `main` deste repositório: sete de sete idênticos. Isso demonstra mesma implementação para essas amostras, não paridade de todos os artefatos distribuídos ou dados SQLite existentes.
+
+### Decisão: não promover OrdaX GPT a segundo aplicativo principal
+
+O desktop legado já dispõe de Task, Run, SQLite, mensagens, checkpoints, histórico paginado, memória aprovada e segmentos de conversas do usuário. `ordax-gpt` tem um MVP mais limitado de desktop e apenas cliente Runtime/MCP **read-only**, sem submissão de ações. Ele não substitui o desktop funcional. Porém suas implementações de event-store com versão/lease/integridade, Supervisor/worker leases, effect ledger com idempotência e reconciliação, contexto neutro a provedor, APIs de modelo e provas de recuperação são **candidatos exclusivos a avaliar**, não licença para exclusão imediata.
+
+Matriz de tratamento dos pacotes de `ordax-gpt`:
+- `task-engine`, `sqlite-event-store` e `context-engine`: comparar invariantes com `src/store.mjs` e `src/continuation-context.mjs`; adotar somente lacunas reais mediante migração de schema/teste, sem segundo Task writer.
+- `supervisor` e `sqlite-supervisor-store`: avaliar leases, worker evidence, ledger de efeitos incertos, cancelamento, aprovações e testes de crash; integrar no mesmo owner de tarefas antes de habilitar multiagentes, sem criar segunda fila autoritativa.
+- `model-gateway`: avaliar streaming/provider adapters; não substituir indevidamente o router canônico do OS nem o modelo de API autorizada do Flow Hub.
+- `runtime-client`: consumir exclusivamente MCP/Platform/Runtime autorizados, sem segundo executor e sem confundir client read-only com execução E2E.
+- `contracts` e `apps/windows-mvp`: comparar contratos; manter exemplos/provas históricos apenas enquanto necessários; não criar segundo produto instalável.
+
+### Critérios de retirada / remoção
+
+1. Inventariar consumidores, instalações, branches, dados, migrações e referências (incluindo OS, Apps, Platform, Runtime e CI), além dos pacotes acima; código encontrado apenas em documentação não é prova de ausência de consumidores.
+2. Registrar para cada recurso de GPT decisão `ADOPT`, `ALREADY_COVERED`, `REFERENCE_ONLY` ou `REJECT`, com origem, commit, destino, owner e teste. Não transplantar dois bancos ou dois executores.
+3. Para `ADOPT`, demonstrar testes de paridade com falha/crash, reentrada, efeitos incertos, conflito de escritores, cancelamento, idempotência e dados legados. Um plano ou um teste simulado não é substituto de integração.
+4. Garantir exportação/migração de qualquer Task e artefato de GPT que existam em instalação real, com backup, prova de leitura, reversão e preservação de proveniência.
+5. Verificar integrações/dependências remanescentes e gates de segurança, releases e CI; somente então arquivar/despublicar o aplicativo anterior. Exclusão definitiva do repositório, dados, credenciais ou releases é **operação separada** que exige inventário conclusivo e confirmação específica.
+
+### Fronteira de autorização e modelos
+
+A amplitude funcional do aplicativo é configurável, mas não revoga autorizações do sistema. O laboratório ChatGPT Web permanece experimental, usa sessão pessoal e não se torna backend de produção multiusuário. Flow Hub usa APIs oficiais, autenticação própria do produto, cotas por identidade e idempotência; um plano ChatGPT Web não substitui chaves/API. Ferramentas reais são executadas pelo OrdaX Runtime/MCP com grants, alvo e recibos válidos, jamais por texto gerado pelo modelo.
+
+**Ponto único de decisão de produto:** este arquivo. Em `ordax-gpt`, a documentação deve apontar para esta seção e identificar seu roteiro próprio como histórico/em transição, sem manter outra decisão conflitante.
