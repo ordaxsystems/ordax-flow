@@ -1,26 +1,43 @@
 # OrdaX Flow — arquitetura canônica e limites de produto
 
 
-## Direção atual de integração com IA — 2026-10-19 (prioridade)
+## SSOT atual — um motor, dois ambientes de orquestração (19/10/2026)
 
-**Objetivo definido pelo proprietário:** o mecanismo existente de conexão direta com uma sessão pessoal de chat (demonstrado no Electron OrdaX Grátis 0.4.12) deve ser a base a **reutilizar, por contrato**, no aplicativo principal, no Studio, no Flow desktop e em outros aplicativos compatíveis. **Eles não dependem de uma API paga de modelo para a funcionalidade básica.** Não copiar o worker/DOM/WebContents do Electron para cada app, não criar um servidor concorrente e não declarar suporte a provedores que ainda não passaram por integração e testes.
+**Correção de escopo do proprietário (prioridade sobre as decisões datadas abaixo):** não existem dois motores de agentes ou duas soluções de IA independentes. A proposta é **um único núcleo de tarefas/agentes/continuidade**, reutilizado por dois **ambientes de operação com autoridade e dados isolados**. O nome comercial "OrdaX Pilot" e o nome de trabalho "OrdaX Evolution" são provisórios; nenhum implica criar repositório, segundo banco ou segundo executor.
 
-**Uma única integração a API de modelo é considerada para esta fase:** a inteligência supervisora/planejadora do aplicativo principal (nome provisório OrdaX Pilot), por exemplo Groq para distribuição de tarefas. Esse modelo planeja; não substitui o ChatGPT Web do usuário, não concede ações MCP, não habilita automaticamente execução do Runtime e não torna todos os aplicativos dependentes da sua chave. A configuração e o custeio são explícitos; sem chave, a experiência de chat existente deve continuar funcionando.
+### Ambiente interno — evolução do OrdaX
 
-| Superfície | Canal atual/pretendido | API de modelo obrigatória? |
-| --- | --- | --- |
-| OrdaX Grátis / futuro Pilot desktop | Sessão de chat pessoal via integração desktop existente; Supervisor API somente quando ativado | Não para chat básico |
-| OrdaX Studio desktop | Conector de chat pessoal por contrato de host com sessão própria e escopo autorizado | Não |
-| OrdaX Flow desktop | Integração de chat pessoal reutilizada da base existente | Não |
-| Outros apps desktop compatíveis | Adaptador/contrato compartilhado de chat; sem herdar credenciais de outro app | Não |
-| Flow Client + Hub multiusuário (projeto anterior) | **Arquitetura futura distinta:** backend central de APIs de modelos autorizadas, usuários e cotas individuais | Sim **somente se esse produto central for efetivamente lançado**; não é requisito dos apps desktop agora |
+- **Finalidade:** um ambiente de trabalho próprio, permanente e restrito ao proprietário, dedicado a investigar, construir, testar, revisar e evoluir OrdaX OS, Studio, Flow, MCP, Runtime, Apps e demais projetos autorizados.
+- **Origem das tarefas:** objetivos internos, backlog, decisões, dependências, resultados de testes e checkpoints do próprio ambiente, não requisições externas de clientes. O supervisor planeja, prioriza, distribui trabalho a agentes por projeto/área, reconcilia efeitos e sugere ou inicia próximas ações elegíveis dentro de políticas predefinidas.
+- **Integração de IA:** o sistema atual de interação com chats pessoais, hoje implementado no Electron Grátis, é a base a adaptar e reutilizar por contrato. **A integração inicial prevista com API de modelo (ex.: Groq) pertence ao supervisor/orquestrador interno** e não substitui todos os provedores de chat nem obriga Studio/Flow desktop a ter uma chave de API de modelo.
+- **Execução:** ChatGPT/outros chats compatíveis e ferramentas autorizadas via GitHub, OrdaX MCP e Runtime. A inteligência que planeja **não ganha grants** por gerar instruções. Falhas, limite de contexto, envio incerto, cancelamento ou desconexão mantêm Task/checkpoint/evidência até reconciliação, sem repetição cega.
+- **Autonomia:** tarefas podem continuar automaticamente **somente enquanto existe executor conectado e autorizado**, com limites explícitos de custo, ferramentas, concorrência, políticas, escopo, revisão de PR e segurança. Não prometer trabalho em background sem runtime/serviço disponível.
 
-**Não confundir os dois projetos:** o Flow desktop local 0.4.12 já funciona como laboratório com sessão pessoal, enquanto os diretórios apps/flow-client e apps/flow-hub implementam contratos iniciais para outra proposta multiusuário. A decisão de 18/10/2026, preservada abaixo, descreve **essa proposta central futura**, não uma obrigação de instalar o Hub, fornecer chave de modelo ou usar API de inferência para abrir o Grátis, Studio ou Flow desktop. Nenhuma instância compartilhada de ChatGPT Web deve ser usada para prestar serviço multiusuário.
+### Ambiente externo — orquestração multiusuário
 
-**Boundary do sistema compartilhado:** o conector do chat é específico do host/provedor, não SSOT de modelo, autorização ou execução. Sessões, cookies e credenciais não são compartilhados entre usuários/aplicativos sem consentimento. Na fase atual o worker real somente conhece ChatGPT Web; Grok, Claude e outros chats exigem adaptações próprias, comprovação de compatibilidade e uso permitido. O laboratório Web atual não equivale a API oficial, confiabilidade contratual ou suporte de produção. O OrdaX MCP permanece genérico; OrdaX Platform fornece grants/identidade e o Runtime executa ações autorizadas com auditoria. O agente não recebe privilégios porque um chat foi conectado.
+- **Finalidade:** aceitar demandas externas de usuários, empresas, outros aplicativos e integrações e executá-las pelo **mesmo motor lógico de tarefas/agentes/continuidade**, mas sob políticas de produto e autorização específicas.
+- **Origem das tarefas:** requisições autenticadas, APIs de entrada, UI cliente ou eventos externos; isso **não** significa necessariamente consumir uma API paga de modelo. **API de entrada de solicitações != API de inferência de IA**. O plano de provedores de IA deve ser escolhido pelo produto/usuário quando implementado e autorizado.
+- **Isolamento:** identidade, tenant, workspace, permissões, orçamento/cota, credenciais, dados, filas e resultados são vinculados ao sujeito verificado, sem acesso aos repositórios ou ao contexto privilegiado do ambiente interno. Jamais compartilhar a sessão pessoal ChatGPT do proprietário para executar tarefas de clientes.
+- **Integração de chats:** adaptar o mesmo contrato para provedores/sessões legitimamente autorizados por cliente, **se** as capacidades e termos de uso permitirem; onde isso não for viável, oferecer integração oficial por API de modelo, com custos e credenciais adequados. O laboratório ChatGPT Web existente **não** comprova um backend SaaS multiusuário.
+- **Flow Client/Hub:** as telas e o relay existentes são *superfícies de entrada/operação* que devem convergir ao motor compartilhado, e não constituir um segundo supervisor ou banco concorrente. A documentação de 18/10/2026 representa a primeira proposta de transporte multiusuário, não a obrigação de manter arquitetura de inferência separada.
 
-**Política de evolução:** consolidar primeiro as capacidades verificadas do desktop, especificar um único contrato cliente para a interação com chats e implementar adapters de host sem duplicação. API de modelos no planejador é capacidade isolada e opt-in. O futuro Flow Central multiusuário fica fora desse corte até uma decisão explícita de ativação, com testes próprios de identidade, cotas e custos.
+### Núcleo compartilhado e fronteiras canônicas
 
+| Responsabilidade | Único owner ou contrato |
+| --- | --- |
+| Task, Run, agente, fila, checkpoint, continuidade, reconciliação, evidência e auditoria de trabalho | **Um motor de orquestração** a consolidar a partir das implementações existentes no repositório Flow/Grátis, aproveitando invariantes realmente ausentes do GPT; nunca dois Task writers para o mesmo escopo |
+| Entrada e configuração do ambiente interno | Aplicativo desktop completo derivado do Grátis; configurações restritas ao owner |
+| Entrada externa, autenticação, RBAC, cota e roteamento de solicitante | Flow Client/Hub e contratos/autoridade da Platform, sem duplicar conta ou grants |
+| Chat por conta, sessão, transporte e integração de provedor | Contrato compartilhável com adapters por host e provedor, isolamento por usuário/aplicativo; o executor Electron/DOM é um laboratório existente, não backend universal |
+| Modelo do supervisor (quando habilitado) | Adapter de API de modelo do orquestrador; separado da API HTTP de solicitações |
+| Permissões, dispositivo, execução real e resultados de ferramentas | Platform/OrdaX MCP + Runtime; o orquestrador consome grants/recibos, não executa por autoridade de prompt |
+| OrdaX Intelligence/OS | Inteligência e memória sistêmicas do OS; os apps não copiam esse owner nem fazem o OS depender de Flow |
+
+**Sem conflitos de nomes:** agente interno é um papel operacional, **não um Space** de perfil do OrdaX OS. Projeto, Task, Run, segmento de chat, Space de perfil, dispositivo alvo e sessão de provedor são identidades distintas. O aplicativo principal poderá expor agentes "OS", "Studio", "MCP" etc. como configurações, não produtos ou serviços separados.
+
+**Política de implantação e SSOT:** primeiro fechar o núcleo e o ambiente interno sem regressão do Grátis; depois habilitar entrada externa isolada sobre o mesmo contrato. Reutilizar contratos entre repositórios via versões/adapters, sem exigir que Studio/Flow desktop importem o executável principal ou um banco SQLite específico. Uma futura versão multiusuário pode usar armazenamento central autorizado sem duplicar a autoridade de identidade/memória da Platform. Antes de anunciar qualquer provedor de chat como suportado, validar legalidade de uso, autenticação, recuperação, revogação, envio, streaming e testes reais.
+
+**Efeito desta decisão:** o modelo central multiusuário com apenas API oficial de inferência, descrito nas seções históricas abaixo, torna-se **uma possível configuração de provedores**, não outro motor nem pré-requisito imposto aos aplicativos. O ponto único de verdade para decisões posteriores é esta seção.
 
 ## Decisão canônica — fluxo de conversas e MCP (18/10/2026)
 
