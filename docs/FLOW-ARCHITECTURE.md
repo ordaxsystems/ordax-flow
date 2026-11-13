@@ -53,3 +53,22 @@ Decisão de produto: 17/10/2026. Repositório oficial: `ordaxsystems/ordax-flow`
 - `npm run test:live:typing`: teste de teclado/draft somente na UI OrdaX, sem enviar mensagens ao ChatGPT; não tenta simular pessoa para contornar controles externos.
 - E2Es reais do aplicativo legado são documentados em `docs/E2E-2026-10-17.md`; requerem sessão autorizada.
 - Qualquer teste com múltiplos usuários exige marcadores identificáveis, resultados vinculados a identidade e ausência de vazamento entre projetos. As fixtures devem ser removidas.
+
+## Identidades e nomes de Projeto/Task/Space (auditoria 19/10/2026)
+
+Este documento permanece o owner da arquitetura **Flow**; não cria um catálogo de Spaces ou uma nova Conta. “Projeto” usado na UI Flow pode designar o **agrupamento de conversas/Tasks** do produto. Ele não deve ser silenciosamente transformado no Projeto canônico de desenvolvimento da Platform.
+
+| Termo | Identidade e owner | Regra |
+| --- | --- | --- |
+| Conta OrdaX | `session.subject_id` da OrdaX Platform | única identidade autenticada, nunca um cadastro Flow próprio |
+| Space | `ordax_spaces.space_id` da Platform, apresentado pelo OS | **não** criado implicitamente por Flow ou pelo MCP; só usar com associação de produto explícita e autorizada |
+| Projeto canônico de produto | `ordax_projects.project_id`, vinculado a Space | não equivale a Task Flow, diretório local ou repositório GitHub por nome |
+| Projeto de conversas Flow | recurso de domínio Flow com owner de histórico/conversas | isolamento do Flow; eventual vínculo a projeto canônico é explícito e versionado, não presumido |
+| Task / Run | unidade de solicitação e unidade de execução no Flow | não são Space, projeto Cloud nem grant MCP |
+| Workspace | contexto de organização/UI do Flow, se usado | não usar como sinônimo técnico da entidade Space |
+| Flow Hub | backend de entrada/roteamento e painel administrativo distinto | não vira OrdaX Studio, Runtime ou autoridade de criação de Spaces |
+| MCP Tool / Capability / Grant | Tool da Platform, capacidade e autorização separadas | tarefas simples de chat não requerem MCP, Space ou computador conectado |
+
+Compatibilidade: `taskId`, `requestId`, `/v1/projects` e seus consumidores existentes mantêm os nomes e payloads até uma migração específica com inventário; **não** renomear automaticamente uma Task ou URL por aparência de termo. O endpoint `/v1/projects` continua sendo do **domínio Flow**, e não uma rota de criação de `ordax_projects`. A reconciliação `ordax-platform#220`/PR #222 de Space–Projeto–GitHub–Dispositivo não autoriza Flow a criar vínculos, pedir grants ou tornar chat normal dependente do OS.
+
+Flow e Studio são independentes de boot/instalação do OrdaX OS. Seu eventual consumo de identidade/Spaces/Projects deve ser por APIs da Platform autorizadas e versionadas; não duplicar tabelas, credenciais ou estado de autoridade da Platform.

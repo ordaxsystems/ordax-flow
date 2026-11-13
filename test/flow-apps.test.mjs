@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
+import { readFile } from 'node:fs/promises';
 import { createFlowRelay } from '../src/relay/relay.mjs';
 import { createFlowWebHandler } from '../src/relay/web-apps.mjs';
 
@@ -148,4 +149,17 @@ test('Hub is disabled unless its own RBAC and metrics ports are explicitly wired
     dispatch:async()=>({text:'ok'}),idempotency:{execute:async(_k,_f,fn)=>fn()},
     getHubOverview:async()=>stats
   }),/flow_hub_requires_explicit_rbac_and_projection_adapters/);
+});
+
+test('Flow projects and Tasks never claim implicit canonical Space or Runtime grant', async () => {
+  const architecture = await readFile(new URL('../docs/FLOW-ARCHITECTURE.md', import.meta.url), 'utf8');
+  for (const marker of [
+    'ordax_spaces.space_id', 'ordax_projects.project_id',
+    '/v1/projects', 'taskId', 'requestId',
+    'não requerem MCP, Space ou computador conectado',
+  ]) {
+    assert.ok(architecture.includes(marker), marker);
+  }
+  assert.match(architecture, /vínculo a projeto canônico é explícito e versionado/);
+  assert.match(architecture, /não.*criado implicitamente por Flow ou pelo MCP/i);
 });
