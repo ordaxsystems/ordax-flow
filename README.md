@@ -1,5 +1,11 @@
 # OrdaX Flow — Client + Hub (desktop legado 0.4.12)
 
+## Integração com o restante do OrdaX
+
+Flow é um owner independente de chat/Hub, não um ponto de composição do sistema operacional. Alterações compatíveis ficam neste repo; ele consome capacidades externas por contratos autorizados e não copia source de Surface, Runtime, Platform ou Apps. O produto OrdaX usa a regra de dependência direta e paralelismo por owner definida no OS.
+
+[Regra canônica de integração multi-repositório](https://github.com/ordaxsystems/ordax-os/blob/main/docs/DEVELOPMENT-WORKFLOW.md#integração-multi-repositório--composição-do-produto-2026-11-13).
+
 ## Decisão canônica — fluxo de conversas e MCP (18/10/2026)
 
 **Modelo mental obrigatório em conversas futuras:** o Flow Client é o chat do usuário; o Flow Hub é a central que **recebe** a solicitação, **encaminha** ao provedor de IA autorizado, **recebe** a resposta e **a distribui ao cliente certo**. A central mantém roteamento, identidade, cotas, histórico, memória e continuidade. Não exigir Studio, MCP, Runtime ou OrdaX OS para um chat normal.
