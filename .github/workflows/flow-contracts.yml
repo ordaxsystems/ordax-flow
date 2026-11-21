@@ -2,8 +2,18 @@ name: Flow Contracts
 
 on:
   pull_request:
+    paths-ignore:
+      - 'URGENTE-LEIA.md'
+      - 'AGENTS.md'
+      - 'README.md'
+      - 'docs/**/*.md'
   push:
     branches: [main]
+    paths-ignore:
+      - 'URGENTE-LEIA.md'
+      - 'AGENTS.md'
+      - 'README.md'
+      - 'docs/**/*.md'
 
 permissions:
   contents: read
